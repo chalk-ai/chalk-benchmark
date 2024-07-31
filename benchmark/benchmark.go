@@ -1,10 +1,16 @@
 package main
 
 import (
-	"github.com/chalk-ai/chalk-go"
+	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
+  _ "embed"
+
+
+	"github.com/chalk-ai/chalk-go"
 
 	"github.com/bojand/ghz/printer"
 	"github.com/bojand/ghz/runner"
@@ -15,22 +21,42 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
-const InstallPath = "/update/this/path"
-const RPS = 10
-const DurationSeconds = 120
+//go:embed query_server.proto
+var queryServerProto []byte
+
+const RPS = 10.0
+const DurationSeconds = 2 * time.Minute
 const Host = "insert-your-host-here.chalk.ai:443"
 
 var STRING_INPUTS = []string{"featureset.id"}
 var STRING_OUTPUTS = []string{"featureset.feature_name_2"}
 
-func runBenchmark(host string, rps uint, duration_seconds uint, inputs map[string]*structpb.Value, outputs []*commonv1.OutputExpr) {
+func curDir() string {
+    ex, err := os.Executable()
+    if err != nil {
+        panic(err)
+    }
+    return filepath.Dir(ex)
+}
+
+
+func runBenchmark(host string, rps uint, duration_seconds time.Duration, inputs map[string]*structpb.Value, outputs []*commonv1.OutputExpr) {
 	client, _ := chalk.NewClient(&chalk.ClientConfig{
 		UseGrpc: true,
 	})
 	tokenResult, err := client.GetToken()
 	ExitIfError(err, "Failed to get token")
+  file, err := os.CreateTemp("dir", "query_server.proto")
+  if err != nil {
+    log.Fatal(err)
+  }
+  file.Write(queryServerProto)
+  // defer os.Remove(file.Name())
 
-	total_requests := uint(rps * duration_seconds)
+
+
+
+	total_requests := uint(float64(rps) * duration_seconds.Seconds())
 	report, err := runner.Run(
 		strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryProcedure, "/"),
 		host,
