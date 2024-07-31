@@ -13,4 +13,7 @@ adjust common benchmarking parameters such as requests per second and total requ
 ## Instructions
 
 1. Clone this repository
-2. 
+2. Update the global variables in `benchmark/benchmark.go` based on the query you would like to benchmark.
+3. Run `go run benchmark/benchmark.go` to start the benchmarking process.
+4. Review the benchmark results. The script is set to print a report in your terminal and output an HTML rendering of
+   the benchmark report. 

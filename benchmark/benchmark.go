@@ -1,4 +1,4 @@
-package benchmark
+package main
 
 import (
 	"github.com/chalk-ai/chalk-go"
@@ -12,13 +12,13 @@ import (
 	"github.com/chalk-ai/chalk-go/gen/chalk/engine/v1/enginev1connect"
 	_ "github.com/goccy/go-json"
 	"google.golang.org/protobuf/proto"
-	structpb "google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
-const INSTALL_PATH = "/update/this/path"
+const InstallPath = "/update/this/path"
 const RPS = 10
-const DURATION_SECONDS = 120
-const HOST = "insert-your-host-here.chalk.ai:443"
+const DurationSeconds = 120
+const Host = "insert-your-host-here.chalk.ai:443"
 
 var STRING_INPUTS = []string{"featureset.id"}
 var STRING_OUTPUTS = []string{"featureset.feature_name_2"}
@@ -43,7 +43,7 @@ func runBenchmark(host string, rps uint, duration_seconds uint, inputs map[strin
 			"x-chalk-env-id":          tokenResult.PrimaryEnvironment,
 			"x-chalk-deployment-type": "engine-grpc",
 		}),
-		runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{INSTALL_PATH + "chalk-benchmark/benchmark/protos/"}),
+		runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{InstallPath + "chalk-benchmark/benchmark/protos/"}),
 		runner.WithSkipTLSVerify(true),
 		runner.WithConcurrency(16),
 		runner.WithBinaryData(OrFatal(proto.Marshal(&commonv1.OnlineQueryRequest{
@@ -88,5 +88,5 @@ func main() {
 		}
 	}
 
-	runBenchmark(HOST, RPS, DURATION_SECONDS, inputs, outputs)
+	runBenchmark(Host, RPS, DurationSeconds, inputs, outputs)
 }
