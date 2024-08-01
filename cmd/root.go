@@ -20,38 +20,25 @@ import (
 	structpb "google.golang.org/protobuf/types/known/structpb"
 )
 
-func curDir() string {
-	cwd, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-	return cwd
-}
-
-func executionDir() string {
-	ex, err := os.Executable()
-	if err != nil {
-		panic(err)
-	}
-	exPath := filepath.Dir(ex)
-	return exPath
-}
-
 var rootCmd = &cobra.Command{
 	Use:   "chalk-benchmark --client_id <client_id> --client_secret <client_secret> --rps <rps> --duration_seconds <duration_seconds>",
 	Short: "Run load test for chalk grpc",
 	Long:  `This should be run on a node close to the client's sandbox`,
 	Run: func(cmd *cobra.Command, args []string) {
-		client := OrFatal(chalk.NewClient(&chalk.ClientConfig{
+		client, err := chalk.NewClient(&chalk.ClientConfig{
 			ApiServer:    host,
 			ClientId:     clientId,
 			ClientSecret: clientSecret,
 			// EnvironmentId: environment,
 			UseGrpc: true,
-		}))("to create client")
+		})
+		if err != nil {
+			fmt.Printf("Failed to create client with error: %s\n", err)
+			os.Exit(1)
+		}
 
 		tmpd := WriteEmbeddedDirToTmp()
-		cd := curDir()
+		cd := CurDir()
 
 		tokenResult, err := client.GetToken()
 		grpcHost := strings.TrimPrefix(strings.TrimPrefix(tokenResult.Engines[tokenResult.PrimaryEnvironment], "https://"), "http://")
@@ -61,7 +48,7 @@ var rootCmd = &cobra.Command{
 		if test {
 			pingRequest, err := proto.Marshal(&enginev1.PingRequest{Num: 10})
 			if err != nil {
-				fmt.Printf("Failed to marshal ping request with err: %s", err)
+				fmt.Printf("Failed to marshal ping request with err: %s\n", err)
 				os.Exit(1)
 			}
 			result, err = runner.Run(
@@ -79,7 +66,7 @@ var rootCmd = &cobra.Command{
 				runner.WithBinaryData(pingRequest),
 			)
 			if err != nil {
-				fmt.Printf("Failed to run Ping request with err: %s", err)
+				fmt.Printf("Failed to run Ping request with err: %s\n", err)
 				os.Exit(1)
 			}
 
@@ -121,7 +108,7 @@ var rootCmd = &cobra.Command{
 			}
 			binaryData, err := proto.Marshal(&oqr)
 			if err != nil {
-				fmt.Printf("Failed to marshal online query request with inputs: '%s' and outputs: '%s'", inputsProcessed, outputsProcessed)
+				fmt.Printf("Failed to marshal online query request with inputs: '%s' and outputs: '%s'\n", inputsProcessed, outputsProcessed)
 				os.Exit(1)
 			}
 
@@ -144,7 +131,7 @@ var rootCmd = &cobra.Command{
 				runner.WithBinaryData(binaryData),
 			)
 			if err != nil {
-				fmt.Printf("Failed to run online query with err: %s", err)
+				fmt.Printf("Failed to run online query with err: %s\n", err)
 				os.Exit(1)
 			}
 		}
@@ -154,12 +141,16 @@ var rootCmd = &cobra.Command{
 			Report: result,
 		}
 
-		ExitIfError(p.Print("summary"), "failed to print report")
+		err = p.Print("summary")
+		if err != nil {
+			fmt.Printf("Failed to print report with error: %s\n", err)
+			os.Exit(1)
+		}
 
-    reportFile := filepath.Join(cd, fmt.Sprintf("%s.html", strings.TrimSuffix(outputFile, ".html")))
+		reportFile := filepath.Join(cd, fmt.Sprintf("%s.html", strings.TrimSuffix(outputFile, ".html")))
 		outputFile, err := os.OpenFile(reportFile, os.O_RDWR|os.O_CREATE, 0660)
 		if err != nil {
-			fmt.Printf("Failed to open report file with error: %s", err)
+			fmt.Printf("Failed to open report file with error: %s\n", err)
 			os.Exit(1)
 		}
 
@@ -175,10 +166,10 @@ var rootCmd = &cobra.Command{
 
 		err = htmlSaver.Print("html")
 		if err != nil {
-			fmt.Printf("Failed to save report with error: %s", err)
+			fmt.Printf("Failed to save report with error: %s\n", err)
 			os.Exit(1)
 		}
-    fmt.Printf("Wrote report file to %s", reportFile)
+		fmt.Printf("Wrote report file to %s\n", reportFile)
 	},
 }
 

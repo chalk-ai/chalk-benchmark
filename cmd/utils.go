@@ -9,25 +9,24 @@ import (
 	"path/filepath"
 )
 
-func ExitIfError(err error, msg string) {
+func CurDir() string {
+	cwd, err := os.Getwd()
 	if err != nil {
-		fmt.Printf("Exiting: %s, %s", msg, err)
-		os.Exit(1)
+		panic(err)
 	}
-}
-func OrFatal[T any](t T, err error) func(s string) T {
-	return func(s string) T {
-		ExitIfError(err, s)
-		return t
-	}
+	return cwd
 }
 
 //go:embed protos
 var protos embed.FS
 
 func WriteEmbeddedDirToTmp() string {
-	tmpDir := OrFatal(os.MkdirTemp("", "tmp"))("Failed to create temp dir")
+	tmpDir, err := os.MkdirTemp("", "tmp")
 	// should defer close here
+  if err != nil {
+    fmt.Printf("Failed to create temp dir with error: %s\n", err)
+    os.Exit(1)
+  }
 
 	fs.WalkDir(protos, ".", func(path string, d fs.DirEntry, err error) error {
 		if d.IsDir() {
@@ -44,7 +43,7 @@ func WriteEmbeddedDirToTmp() string {
 			os.Exit(1)
 		}
 		if err := os.WriteFile(filepath.Join(tmpDir, path), fileContent, 0666); err != nil {
-			fmt.Printf("error os.WriteFile error: %v", err)
+			fmt.Printf("error os.WriteFile error: %s\n", err)
 			os.Exit(1)
 		}
 		return nil
