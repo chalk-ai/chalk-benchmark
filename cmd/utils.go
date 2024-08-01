@@ -22,7 +22,7 @@ var protos embed.FS
 
 func WriteEmbeddedDirToTmp() string {
 	tmpDir, err := os.MkdirTemp("", "tmp")
-	// should defer close here
+	// should probably call this in main and defer remove here
   if err != nil {
     fmt.Printf("Failed to create temp dir with error: %s\n", err)
     os.Exit(1)
