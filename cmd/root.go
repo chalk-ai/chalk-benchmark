@@ -43,6 +43,8 @@ var rootCmd = &cobra.Command{
 			EnvironmentId: environment,
 		}))("to create client")
 
+    tmpd := WriteEmbeddedDirToTmp()
+    fmt.Printf("%s\n", tmpd)
 		tokenResult, err := client.GetToken()
 		grpcHost := strings.TrimPrefix(strings.TrimPrefix(tokenResult.Engines[tokenResult.PrimaryEnvironment], "https://"), "http://")
 
@@ -200,10 +202,10 @@ func init() {
 	flags.UintVarP(&rps, "rps", "r", 1, "Number of concurrent requests")
 	flags.Float64VarP(&durationSeconds, "duration_seconds", "d", 120, "Amount of time to run the benchmark (in seconds).")
 	flags.StringVarP(&clientId, "client_id", "c", os.Getenv("CHALK_CLIENT_ID"), "client_id for your environment.")
-	flags.StringVarP(&clientSecret, "client_secret", "s", os.Getenv("CHALK_CLIENT_SECRET"), "client_secret for your environment.")
-  flags.StringToStringVar(&inputStr, "in_str", nil, "string input features to the online query, for instance: 'user.id=xwdw,user.name'John'")
+  flags.StringVarP(&clientSecret, "client_secret", "s", os.Getenv("CHALK_CLIENT_SECRET"), "client_secret for your environment.")
+	flags.StringToStringVar(&inputStr, "in_str", nil, "string input features to the online query, for instance: 'user.id=xwdw,user.name'John'")
 	flags.StringToInt64Var(&inputNum, "in_num", nil, "numeric input features to the online query, for instance 'user.id=1,user.age=28'")
-  flags.StringArrayVar(&output, "out", nil, "target output features for the online query, for instance: 'user.is_fraud'")
+	flags.StringArrayVar(&output, "out", nil, "target output features for the online query, for instance: 'user.is_fraud'")
 	flags.StringVarP(&outputFile, "output_file", "o", "result.html", "Output filename for the saved report.")
 	flags.StringVar(&host, "host", "https://api.chalk.ai", "API server url—in host cases, this default will work.")
 	flags.BoolVar(&useNativeSql, "native_sql", false, "Whether to use the `use_native_sql_operators` planner option.")
