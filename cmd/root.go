@@ -166,7 +166,7 @@ var rootCmd = &cobra.Command{
 		}
 
 		// prevents the bearer token from being printed out as part of the report
-		if removeReportMetadata {
+		if !includeRequestMetadata {
 			result.Options.Metadata = nil
 		}
 
@@ -202,7 +202,7 @@ var output []string
 var environment string
 var outputFile string
 var useNativeSql bool
-var removeReportMetadata bool
+var includeRequestMetadata bool
 
 func init() {
 	viper.AutomaticEnv()
@@ -218,5 +218,5 @@ func init() {
 	flags.StringVarP(&outputFile, "output_file", "o", "result.html", "Output filename for the saved report.")
 	flags.StringVar(&host, "host", "https://api.chalk.ai", "API server url—in host cases, this default will work.")
 	flags.BoolVar(&useNativeSql, "native_sql", false, "Whether to use the `use_native_sql_operators` planner option.")
-	flags.BoolVar(&removeReportMetadata, "remove_metadata", true, "Whether to remove sensitive data from the report.")
+	flags.BoolVar(&includeRequestMetadata, "include_request_md", false, "Whether to remove sensitive data from the report.")
 }
