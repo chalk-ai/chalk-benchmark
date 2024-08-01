@@ -1,4 +1,4 @@
-module main
+module github.com/chalk-ai/chalk-benchmark
 
 go 1.22.3
 

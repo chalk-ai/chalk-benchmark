@@ -1,7 +1,8 @@
 package main
 
+
 import (
-	"main/cmd"
+  "github.com/chalk-ai/chalk-benchmark/cmd"
 )
 
 var Basepath string

@@ -41,7 +41,7 @@ func executionDir() string {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "go run main.go --client_id <client_id> --client_secret <client_secret> --rps <rps> --duration_seconds <duration_seconds>",
+	Use:   "chalk-benchmark --client_id <client_id> --client_secret <client_secret> --rps <rps> --duration_seconds <duration_seconds>",
 	Short: "Run load test for chalk grpc",
 	Long:  `This should be run on a node close to the client's sandbox`,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -54,8 +54,7 @@ var rootCmd = &cobra.Command{
 		}))("to create client")
 
     tmpd := WriteEmbeddedDirToTmp()
-		// cd := curDir()
-    ex := executionDir()
+		cd := curDir()
 
 		tokenResult, err := client.GetToken()
 		grpcHost := strings.TrimPrefix(strings.TrimPrefix(tokenResult.Engines[tokenResult.PrimaryEnvironment], "https://"), "http://")
@@ -160,7 +159,7 @@ var rootCmd = &cobra.Command{
 
 		ExitIfError(p.Print("summary"), "failed to print report")
 
-		outputFile, err := os.OpenFile(filepath.Join(filepath.Dir(ex), fmt.Sprintf("%s.html", strings.TrimSuffix(outputFile, ".html"))), os.O_RDWR|os.O_CREATE, 0660)
+		outputFile, err := os.OpenFile(filepath.Join(filepath.Dir(cd), fmt.Sprintf("%s.html", strings.TrimSuffix(outputFile, ".html"))), os.O_RDWR|os.O_CREATE, 0660)
 		if err != nil {
 			fmt.Printf("Failed to open report file with error: %s", err)
 			os.Exit(1)
