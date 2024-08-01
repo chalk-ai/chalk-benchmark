@@ -78,15 +78,11 @@ var rootCmd = &cobra.Command{
 			}
 			inputsProcessed := make(map[string]*structpb.Value)
 			for k, v := range inputNum {
-				if inputsAreInts {
-					inputsProcessed[k] = structpb.NewNumberValue(float64(v))
-				}
+				inputsProcessed[k] = structpb.NewNumberValue(float64(v))
 			}
 
 			for k, v := range inputStr {
-				if inputsAreInts {
-					inputsProcessed[k] = structpb.NewStringValue(v)
-				}
+				inputsProcessed[k] = structpb.NewStringValue(v)
 			}
 
 			outputsProcessed := make([]*commonv1.OutputExpr, len(output))
@@ -184,7 +180,6 @@ func Execute() {
 var rps uint
 var durationFlag time.Duration
 var test bool
-var inputsAreInts bool
 var host string
 var clientId string
 var clientSecret string
