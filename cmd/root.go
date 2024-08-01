@@ -218,5 +218,5 @@ func init() {
 	flags.StringVarP(&outputFile, "output_file", "o", "result.html", "Output filename for the saved report.")
 	flags.StringVar(&host, "host", "https://api.chalk.ai", "API server url—in host cases, this default will work.")
 	flags.BoolVar(&useNativeSql, "native_sql", false, "Whether to use the `use_native_sql_operators` planner option.")
-	flags.BoolVar(&includeRequestMetadata, "include_request_md", false, "Whether to remove sensitive data from the report.")
+  flags.BoolVarP(&includeRequestMetadata, "include_request_md", "x", false, "Whether to include request metadata in the report: this defaults to false since a true value includes the auth token.")
 }
