@@ -149,7 +149,7 @@ var rootCmd = &cobra.Command{
 
 		ExitIfError(p.Print("summary"), "failed to print report")
 
-		outputFile, err := os.OpenFile(filepath.Join(filepath.Dir(cd), fmt.Sprintf("%s.html", strings.TrimSuffix(outputFile, ".html"))), os.O_RDWR|os.O_APPEND|os.O_CREATE, 0660)
+		outputFile, err := os.OpenFile(filepath.Join(filepath.Dir(cd), fmt.Sprintf("%s.html", strings.TrimSuffix(outputFile, ".html"))), os.O_RDWR|os.O_CREATE, 0660)
 		if err != nil {
 			fmt.Printf("Failed to open report file with error: %s", err)
 			os.Exit(1)
