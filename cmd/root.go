@@ -49,7 +49,8 @@ var rootCmd = &cobra.Command{
 			ApiServer:     host,
 			ClientId:      clientId,
 			ClientSecret:  clientSecret,
-			EnvironmentId: environment,
+			// EnvironmentId: environment,
+      UseGrpc: true,
 		}))("to create client")
 
     tmpd := WriteEmbeddedDirToTmp()
@@ -69,7 +70,7 @@ var rootCmd = &cobra.Command{
 			}
 			result, err = runner.Run(
 				strings.TrimPrefix(enginev1connect.QueryServicePingProcedure, "/"),
-				fmt.Sprintf("%s:443", grpcHost),
+        grpcHost,
 				runner.WithRPS(1),
 				runner.WithTotalRequests(1),
 				runner.WithMetadata(map[string]string{
@@ -131,7 +132,7 @@ var rootCmd = &cobra.Command{
 			total_requests := uint(float64(rps) * durationSeconds)
 			result, err = runner.Run(
 				strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryProcedure, "/"),
-				fmt.Sprintf("%s:443", grpcHost),
+        grpcHost,
 				runner.WithRPS(rps),
 				runner.WithTotalRequests(total_requests),
 				runner.WithAsync(true),
