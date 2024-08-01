@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/bojand/ghz/printer"
 	"github.com/bojand/ghz/runner"
@@ -112,12 +113,12 @@ var rootCmd = &cobra.Command{
 				os.Exit(1)
 			}
 
-			total_requests := uint(float64(rps) * durationSeconds)
+			totalRequests := uint(float64(rps) * float64(durationFlag/time.Second))
 			result, err = runner.Run(
 				strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryProcedure, "/"),
 				grpcHost,
 				runner.WithRPS(rps),
-				runner.WithTotalRequests(total_requests),
+				runner.WithTotalRequests(totalRequests),
 				runner.WithAsync(true),
 				runner.WithConnections(16),
 				runner.WithMetadata(map[string]string{
@@ -181,7 +182,7 @@ func Execute() {
 }
 
 var rps uint
-var durationSeconds float64
+var durationFlag time.Duration
 var test bool
 var inputsAreInts bool
 var host string
@@ -199,15 +200,15 @@ func init() {
 	viper.AutomaticEnv()
 	flags := rootCmd.Flags()
 	flags.BoolVarP(&test, "test", "t", false, "Ping the GRPC engine to make sure the benchmarking tool can reach the engine.")
-	flags.UintVarP(&rps, "rps", "r", 1, "Number of concurrent requests")
-	flags.Float64VarP(&durationSeconds, "duration_seconds", "d", 120, "Amount of time to run the benchmark (in seconds).")
-	flags.StringVarP(&clientId, "client_id", "c", os.Getenv("CHALK_CLIENT_ID"), "client_id for your environment.")
-	flags.StringVarP(&clientSecret, "client_secret", "s", os.Getenv("CHALK_CLIENT_SECRET"), "client_secret for your environment.")
+	flags.UintVar(&rps, "rps", 1, "Number of concurrent requests")
+	flags.DurationVar(&durationFlag, "duration", 120, "Amount of time to run the benchmark (ie. 60s).")
+	flags.StringVar(&clientId, "client_id", os.Getenv("CHALK_CLIENT_ID"), "client_id for your environment.")
+	flags.StringVar(&clientSecret, "client_secret", os.Getenv("CHALK_CLIENT_SECRET"), "client_secret for your environment.")
 	flags.StringToStringVar(&inputStr, "in_str", nil, "string input features to the online query, for instance: 'user.id=xwdw,user.name'John'")
 	flags.StringToInt64Var(&inputNum, "in_num", nil, "numeric input features to the online query, for instance 'user.id=1,user.age=28'")
 	flags.StringArrayVar(&output, "out", nil, "target output features for the online query, for instance: 'user.is_fraud'")
-	flags.StringVarP(&outputFile, "output_file", "o", "result.html", "Output filename for the saved report.")
+	flags.StringVar(&outputFile, "output_file", "result.html", "Output filename for the saved report.")
 	flags.StringVar(&host, "host", "https://api.chalk.ai", "API server url—in host cases, this default will work.")
 	flags.BoolVar(&useNativeSql, "native_sql", false, "Whether to use the `use_native_sql_operators` planner option.")
-	flags.BoolVarP(&includeRequestMetadata, "include_request_md", "x", false, "Whether to include request metadata in the report: this defaults to false since a true value includes the auth token.")
+	flags.BoolVar(&includeRequestMetadata, "include_request_md", false, "Whether to include request metadata in the report: this defaults to false since a true value includes the auth token.")
 }
