@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/bojand/ghz/printer"
@@ -22,13 +21,11 @@ import (
 )
 
 func curDir() string {
-	_, filename, _, ok := runtime.Caller(0)
-
-	if !ok {
-		fmt.Println("Failed to find working directory")
-		os.Exit(1)
+	cwd, err := os.Getwd()
+	if err != nil {
+		panic(err)
 	}
-	return filepath.Dir(filename)
+	return cwd
 }
 
 func executionDir() string {
@@ -159,7 +156,8 @@ var rootCmd = &cobra.Command{
 
 		ExitIfError(p.Print("summary"), "failed to print report")
 
-		outputFile, err := os.OpenFile(filepath.Join(filepath.Dir(cd), fmt.Sprintf("%s.html", strings.TrimSuffix(outputFile, ".html"))), os.O_RDWR|os.O_CREATE, 0660)
+    reportFile := filepath.Join(cd, fmt.Sprintf("%s.html", strings.TrimSuffix(outputFile, ".html")))
+		outputFile, err := os.OpenFile(reportFile, os.O_RDWR|os.O_CREATE, 0660)
 		if err != nil {
 			fmt.Printf("Failed to open report file with error: %s", err)
 			os.Exit(1)
@@ -174,11 +172,13 @@ var rootCmd = &cobra.Command{
 			Out:    outputFile,
 			Report: result,
 		}
+
 		err = htmlSaver.Print("html")
 		if err != nil {
 			fmt.Printf("Failed to save report with error: %s", err)
 			os.Exit(1)
 		}
+    fmt.Printf("Wrote report file to %s", reportFile)
 	},
 }
 
