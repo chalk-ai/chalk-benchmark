@@ -1,0 +1,120 @@
+syntax = "proto3";
+
+package chalk.common.v1;
+
+enum ErrorCode {
+  // An unspecified error occurred.
+  ERROR_CODE_INTERNAL_SERVER_ERROR_UNSPECIFIED = 0;
+
+  // The query contained features that do not exist
+  ERROR_CODE_PARSE_FAILED = 1;
+
+  /*
+     A resolver was required as part of running the dependency
+     graph that could not be found.
+  */
+  ERROR_CODE_RESOLVER_NOT_FOUND = 2;
+
+  /*
+     The query is invalid. All supplied features need to be
+     rooted in the same top-level entity.
+  */
+  ERROR_CODE_INVALID_QUERY = 3;
+
+  /*
+     A feature value did not match the expected schema
+     (e.g. `incompatible type "int"; expected "str"`)
+  */
+  ERROR_CODE_VALIDATION_FAILED = 4;
+
+  // The resolver for a feature errored.
+  ERROR_CODE_RESOLVER_FAILED = 5;
+
+  // The resolver for a feature timed out.
+  ERROR_CODE_RESOLVER_TIMED_OUT = 6;
+
+  /*
+     A crash in a resolver that was to produce an input for
+     the resolver crashed, and so the resolver could not run
+     crashed, and so the resolver could not run.
+  */
+  ERROR_CODE_UPSTREAM_FAILED = 7;
+
+  // The request was submitted with an invalid authentication header.
+  ERROR_CODE_UNAUTHENTICATED = 8;
+
+  // The supplied credentials do not provide the right authorization to execute the request.
+  ERROR_CODE_UNAUTHORIZED = 9;
+
+  // The operation was cancelled, typically by the caller.
+  ERROR_CODE_CANCELLED = 10;
+
+  // The deadline expired before the operation could complete.
+  ERROR_CODE_DEADLINE_EXCEEDED = 11;
+}
+
+enum ErrorCodeCategory {
+  /*
+     Network errors are thrown outside your resolvers.
+     For example, your request was unauthenticated,
+     connection failed, or an error occurred within Chalk.
+  */
+  // -- DEFAULT VALUE --
+  ERROR_CODE_CATEGORY_NETWORK_UNSPECIFIED = 0;
+
+  /*
+     Request errors are raised before execution of your
+     resolver code. They may occur due to invalid feature
+     names in the input or a request that cannot be satisfied
+     by the resolvers you have defined.
+  */
+  ERROR_CODE_CATEGORY_REQUEST = 1;
+
+  /*
+     Field errors are raised while running a feature resolver
+     for a particular field. For this type of error, you'll
+     find a feature and resolver attribute in the error type.
+     When a feature resolver crashes, you will receive null
+     value in the response. To differentiate from a resolver
+     returning a null value and a failure in the resolver,
+     you need to check the error schema.
+  */
+  ERROR_CODE_CATEGORY_FIELD = 2;
+}
+
+message ChalkException {
+  // The name of the class of the exception.
+  string kind = 1;
+
+  // The message taken from the exception.
+  string message = 2;
+
+  // The stacktrace produced by the code.
+  string stacktrace = 3;
+
+  // The stacktrace produced by the code, full detail.
+  string internal_stacktrace = 4;
+}
+
+message ChalkError {
+  ErrorCode code = 1;
+  ErrorCodeCategory category = 2;
+
+  // A readable description of the error message.
+  string message = 3;
+
+  // A human-readable hint that can be used to identify the entity that this error is associated with.
+  optional string display_primary_key = 101;
+
+  // If provided, can be used to add additional context to 'display_primary_key'.
+  optional string display_primary_key_fqn = 102;
+
+  // The exception that caused the failure, if applicable.
+  optional ChalkException exception = 103;
+
+  // The fully qualified name of the failing feature, e.g. `user.identity.has_voip_phone`.
+  optional string feature = 104;
+
+  // The fully qualified name of the failing resolver, e.g. `my.project.get_fraud_score`.
+  optional string resolver = 105;
+}
