@@ -31,6 +31,15 @@ func curDir() string {
 	return filepath.Dir(filename)
 }
 
+func executionDir() string {
+  ex, err := os.Executable()
+  if err != nil {
+      panic(err)
+  }
+  exPath := filepath.Dir(ex)
+  return exPath
+}
+
 var rootCmd = &cobra.Command{
 	Use:   "go run main.go --client_id <client_id> --client_secret <client_secret> --rps <rps> --duration_seconds <duration_seconds>",
 	Short: "Run load test for chalk grpc",
@@ -44,11 +53,11 @@ var rootCmd = &cobra.Command{
 		}))("to create client")
 
     tmpd := WriteEmbeddedDirToTmp()
-    fmt.Printf("%s\n", tmpd)
+		// cd := curDir()
+    ex := executionDir()
+
 		tokenResult, err := client.GetToken()
 		grpcHost := strings.TrimPrefix(strings.TrimPrefix(tokenResult.Engines[tokenResult.PrimaryEnvironment], "https://"), "http://")
-
-		cd := curDir()
 
 		var result *runner.Report
 
@@ -68,7 +77,7 @@ var rootCmd = &cobra.Command{
 					"x-chalk-env-id":          tokenResult.PrimaryEnvironment,
 					"x-chalk-deployment-type": "engine-grpc",
 				}),
-				runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{filepath.Join(cd, "protos")}),
+				runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{filepath.Join(tmpd, "protos")}),
 				runner.WithSkipTLSVerify(true),
 				runner.WithBinaryData(pingRequest),
 			)
@@ -132,7 +141,7 @@ var rootCmd = &cobra.Command{
 					"x-chalk-env-id":          tokenResult.PrimaryEnvironment,
 					"x-chalk-deployment-type": "engine-grpc",
 				}),
-				runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{filepath.Join(cd, "protos")}),
+				runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{filepath.Join(tmpd, "protos")}),
 				runner.WithSkipTLSVerify(true),
 				runner.WithConcurrency(16),
 				runner.WithBinaryData(binaryData),
@@ -150,7 +159,7 @@ var rootCmd = &cobra.Command{
 
 		ExitIfError(p.Print("summary"), "failed to print report")
 
-		outputFile, err := os.OpenFile(filepath.Join(filepath.Dir(cd), fmt.Sprintf("%s.html", strings.TrimSuffix(outputFile, ".html"))), os.O_RDWR|os.O_CREATE, 0660)
+		outputFile, err := os.OpenFile(filepath.Join(filepath.Dir(ex), fmt.Sprintf("%s.html", strings.TrimSuffix(outputFile, ".html"))), os.O_RDWR|os.O_CREATE, 0660)
 		if err != nil {
 			fmt.Printf("Failed to open report file with error: %s", err)
 			os.Exit(1)

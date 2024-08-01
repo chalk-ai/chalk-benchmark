@@ -28,6 +28,7 @@ var protos embed.FS
 
 func WriteEmbeddedDirToTmp() string {
   tmpDir := OrFatal(os.MkdirTemp("", "tmp"))("Failed to create temp dir")
+  // should defer close here
 
   fs.WalkDir(protos, ".", func(path string, d fs.DirEntry, err error) error {
     if d.IsDir() {
@@ -49,14 +50,6 @@ func WriteEmbeddedDirToTmp() string {
     }
     return nil
   })
-  // entries, err := os.ReadDir(tmpDir)
-  // if err != nil {
-  //     ExitIfError(err, "damn")
-  // }
-  //
-  // for _, e := range entries {
-  //         fmt.Println(e.Name())
-  // }
   return tmpDir
 }
 
