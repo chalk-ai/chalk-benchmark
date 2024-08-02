@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/bojand/ghz/printer"
 	"github.com/bojand/ghz/runner"
@@ -16,9 +17,20 @@ import (
 	_ "github.com/goccy/go-json"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+  pb "github.com/schollz/progressbar/v3"
 	"google.golang.org/protobuf/proto"
+
 	structpb "google.golang.org/protobuf/types/known/structpb"
 )
+
+func pbar(t time.Duration) {
+  secondsInt := int64(t.Seconds())
+  bar := pb.Default(secondsInt)
+  for i := int64(0); i < secondsInt; i++ {
+      bar.Add(1)
+      time.Sleep(1 * time.Second)
+  }
+}
 
 var rootCmd = &cobra.Command{
 	Use:   "chalk-benchmark --client_id <client_id> --client_secret <client_secret> --rps <rps> --duration_seconds <duration_seconds>",
@@ -71,6 +83,8 @@ var rootCmd = &cobra.Command{
 			}
 
 		} else {
+      go pbar(durationSeconds)
+
 			if inputStr == nil && inputNum == nil {
 				fmt.Println("No inputs provided, please provide inputs with either the `--in_num` or the `--in_str` flags")
 				os.Exit(1)
@@ -108,7 +122,7 @@ var rootCmd = &cobra.Command{
 				os.Exit(1)
 			}
 
-			total_requests := uint(float64(rps) * durationSeconds)
+			total_requests := uint(float64(rps) * durationSeconds.Seconds())
 			result, err = runner.Run(
 				strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryProcedure, "/"),
 				grpcHost,
@@ -177,7 +191,7 @@ func Execute() {
 }
 
 var rps uint
-var durationSeconds float64
+var durationSeconds time.Duration
 var test bool
 var host string
 var clientId string
@@ -195,7 +209,7 @@ func init() {
 	flags := rootCmd.Flags()
 	flags.BoolVarP(&test, "test", "t", false, "Ping the GRPC engine to make sure the benchmarking tool can reach the engine.")
 	flags.UintVarP(&rps, "rps", "r", 1, "Number of concurrent requests")
-	flags.Float64VarP(&durationSeconds, "duration_seconds", "d", 120, "Amount of time to run the benchmark (in seconds).")
+	flags.DurationVarP(&durationSeconds, "duration_seconds", "d", 120, "Amount of time to run the benchmark (in seconds).")
 	flags.StringVarP(&clientId, "client_id", "c", os.Getenv("CHALK_CLIENT_ID"), "client_id for your environment.")
 	flags.StringVarP(&clientSecret, "client_secret", "s", os.Getenv("CHALK_CLIENT_SECRET"), "client_secret for your environment.")
 	flags.StringToStringVar(&inputStr, "in_str", nil, "string input features to the online query, for instance: 'user.id=xwdw,user.name'John'")
