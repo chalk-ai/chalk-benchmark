@@ -93,7 +93,7 @@ var rootCmd = &cobra.Command{
 
 		} else {
       wg.Add(1)
-      go pbar(durationInput, &wg)
+      go pbar(durationFlag, &wg)
 
 			if inputStr == nil && inputNum == nil {
 				fmt.Println("No inputs provided, please provide inputs with either the `--in_num` or the `--in_str` flags")
@@ -132,7 +132,7 @@ var rootCmd = &cobra.Command{
 				os.Exit(1)
 			}
 
-			total_requests := uint(float64(rps) * durationInput.Seconds())
+			total_requests := uint(float64(rps) * durationFlag.Seconds())
 			result, err = runner.Run(
 				strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryProcedure, "/"),
 				grpcHost,
@@ -201,7 +201,7 @@ func Execute() {
 }
 
 var rps uint
-var durationInput time.Duration
+var durationFlag time.Duration
 var test bool
 var host string
 var clientId string
@@ -219,7 +219,7 @@ func init() {
 	flags := rootCmd.Flags()
 	flags.BoolVarP(&test, "test", "t", false, "Ping the GRPC engine to make sure the benchmarking tool can reach the engine.")
 	flags.UintVarP(&rps, "rps", "r", 1, "Number of concurrent requests")
-	flags.DurationVarP(&durationInput, "duration", "d", 120, "Amount of time to run the benchmark (in seconds).")
+	flags.DurationVarP(&durationFlag, "duration", "d", "60s", "Amount of time to run the benchmark (for example, '60s').")
 	flags.StringVarP(&clientId, "client_id", "c", os.Getenv("CHALK_CLIENT_ID"), "client_id for your environment.")
 	flags.StringVarP(&clientSecret, "client_secret", "s", os.Getenv("CHALK_CLIENT_SECRET"), "client_secret for your environment.")
 	flags.StringToStringVar(&inputStr, "in_str", nil, "string input features to the online query, for instance: 'user.id=xwdw,user.name'John'")
