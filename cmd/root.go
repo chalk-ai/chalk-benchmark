@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+  "sync"
 
 	"github.com/bojand/ghz/printer"
 	"github.com/bojand/ghz/runner"
@@ -23,7 +24,8 @@ import (
 	structpb "google.golang.org/protobuf/types/known/structpb"
 )
 
-func pbar(t time.Duration) {
+func pbar(t time.Duration, wg * sync.WaitGroup) {
+  defer wg.Done()
   secondsInt := int64(t.Seconds())
   bar := pb.NewOptions(
     int(secondsInt),
@@ -60,6 +62,7 @@ var rootCmd = &cobra.Command{
 		grpcHost := strings.TrimPrefix(strings.TrimPrefix(tokenResult.Engines[tokenResult.PrimaryEnvironment], "https://"), "http://")
 
 		var result *runner.Report
+    var wg sync.WaitGroup
 
 		if test {
 			pingRequest, err := proto.Marshal(&enginev1.PingRequest{Num: 10})
@@ -85,9 +88,12 @@ var rootCmd = &cobra.Command{
 				fmt.Printf("Failed to run Ping request with err: %s\n", err)
 				os.Exit(1)
 			}
+			fmt.Printf("Successfully pinged GRPC Engine")
+      os.Exit(0)
 
 		} else {
-      go pbar(durationInput)
+      wg.Add(1)
+      go pbar(durationInput, &wg)
 
 			if inputStr == nil && inputNum == nil {
 				fmt.Println("No inputs provided, please provide inputs with either the `--in_num` or the `--in_str` flags")
@@ -149,7 +155,7 @@ var rootCmd = &cobra.Command{
 				os.Exit(1)
 			}
 		}
-
+    wg.Wait()
 		p := printer.ReportPrinter{
 			Out:    os.Stdout,
 			Report: result,
