@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
-  "sync"
 
 	"github.com/bojand/ghz/printer"
 	"github.com/bojand/ghz/runner"
@@ -16,26 +16,26 @@ import (
 	"github.com/chalk-ai/chalk-go/gen/chalk/engine/v1/enginev1connect"
 
 	_ "github.com/goccy/go-json"
+	pb "github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-  pb "github.com/schollz/progressbar/v3"
 	"google.golang.org/protobuf/proto"
 
 	structpb "google.golang.org/protobuf/types/known/structpb"
 )
 
-func pbar(t time.Duration, wg * sync.WaitGroup) {
-  defer wg.Done()
-  secondsInt := int64(t.Seconds())
-  bar := pb.NewOptions(
-    int(secondsInt),
-    pb.OptionSetPredictTime(false),
-    pb.OptionFullWidth(),
-  )
-  for i := int64(0); i < secondsInt; i++ {
-      bar.Add(1)
-      time.Sleep(1 * time.Second)
-  }
+func pbar(t time.Duration, wg *sync.WaitGroup) {
+	defer wg.Done()
+	secondsInt := int64(t.Seconds())
+	bar := pb.NewOptions(
+		int(secondsInt),
+		pb.OptionSetPredictTime(false),
+		pb.OptionFullWidth(),
+	)
+	for i := int64(0); i < secondsInt; i++ {
+		bar.Add(1)
+		time.Sleep(1 * time.Second)
+	}
 }
 
 var rootCmd = &cobra.Command{
@@ -62,7 +62,7 @@ var rootCmd = &cobra.Command{
 		grpcHost := strings.TrimPrefix(strings.TrimPrefix(tokenResult.Engines[tokenResult.PrimaryEnvironment], "https://"), "http://")
 
 		var result *runner.Report
-    var wg sync.WaitGroup
+		var wg sync.WaitGroup
 
 		if test {
 			pingRequest, err := proto.Marshal(&enginev1.PingRequest{Num: 10})
@@ -89,11 +89,11 @@ var rootCmd = &cobra.Command{
 				os.Exit(1)
 			}
 			fmt.Printf("Successfully pinged GRPC Engine")
-      os.Exit(0)
+			os.Exit(0)
 
 		} else {
-      wg.Add(1)
-      go pbar(durationFlag, &wg)
+			wg.Add(1)
+			go pbar(durationFlag, &wg)
 
 			if inputStr == nil && inputNum == nil {
 				fmt.Println("No inputs provided, please provide inputs with either the `--in_num` or the `--in_str` flags")
@@ -155,7 +155,7 @@ var rootCmd = &cobra.Command{
 				os.Exit(1)
 			}
 		}
-    wg.Wait()
+		wg.Wait()
 		p := printer.ReportPrinter{
 			Out:    os.Stdout,
 			Report: result,
@@ -209,7 +209,6 @@ var clientSecret string
 var inputStr map[string]string
 var inputNum map[string]int64
 var output []string
-var environment string
 var outputFile string
 var useNativeSql bool
 var includeRequestMetadata bool
@@ -219,7 +218,7 @@ func init() {
 	flags := rootCmd.Flags()
 	flags.BoolVarP(&test, "test", "t", false, "Ping the GRPC engine to make sure the benchmarking tool can reach the engine.")
 	flags.UintVarP(&rps, "rps", "r", 1, "Number of concurrent requests")
-	flags.DurationVarP(&durationFlag, "duration", "d", time.Duration(60.0* float64(time.Second)), "Amount of time to run the benchmark (for example, '60s').")
+	flags.DurationVarP(&durationFlag, "duration", "d", time.Duration(60.0*float64(time.Second)), "Amount of time to run the benchmark (for example, '60s').")
 	flags.StringVarP(&clientId, "client_id", "c", os.Getenv("CHALK_CLIENT_ID"), "client_id for your environment.")
 	flags.StringVarP(&clientSecret, "client_secret", "s", os.Getenv("CHALK_CLIENT_SECRET"), "client_secret for your environment.")
 	flags.StringToStringVar(&inputStr, "in_str", nil, "string input features to the online query, for instance: 'user.id=xwdw,user.name'John'")
