@@ -1,7 +1,7 @@
 # chalk-benchmark
 
 This repository contains tooling for benchmarking your Chalk queries. To benchmark
-your Chalk query, you must have
+your Chalk query, you must have:
 
 - a deployed Chalk environment provisioned with a GRPC Query Server,
 - permission to run queries and create tokens within the Chalk environment,
@@ -10,9 +10,16 @@ your Chalk query, you must have
 We use [ghz](https://github.com/bojand/ghz) to benchmark Chalk GRPC queries. Ghz enables us to
 adjust common benchmarking parameters such as requests per second and total requests.
 
+## Downloading 
+
+To run Chalk's GRPC benchmarking tool, download the relevant release for your machine from the [releases](https://github.com/chalk-ai/chalk-benchmark/releases) page of the repository. Alternatively, you can clone the repository and [build the binary from source](#building-from-source).
+
 ## Instructions
 
-The Chalk Benchmark tool is a CLI tool that can be run as follows:
+First, download the binary above (or clone this repo and build from source as mentioned below)
+
+The binary can be run as follows:
+
 ```sh
 chalk-benchmark \
   --client_id <client_id> \
@@ -24,11 +31,7 @@ chalk-benchmark \
 
 For more information on the options available, run `chalk-benchmark --help`.
 
-The benchmarking tool outputs a html file with the results of the benchmark. The file will be saved in the current directory. 
-
-## Downloading 
-
-To run Chalk's GRPC benchmarking tool, download the relevant release for your machine from the [releases](https://github.com/chalk-ai/chalk-benchmark/releases) page of the repository. Alternatively, you can also clone the repository and [build the binary from source](#building-from-source).
+The benchmarking tool outputs an HTML file with the benchmark result. The file will be saved in the current directory. 
 
 ## Building From Source
 
