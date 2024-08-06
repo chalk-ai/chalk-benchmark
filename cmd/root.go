@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	commonv1 "github.com/chalk-ai/chalk-go/gen/chalk/common/v1"
 	enginev1 "github.com/chalk-ai/chalk-go/gen/chalk/engine/v1"
 	"github.com/chalk-ai/chalk-go/gen/chalk/engine/v1/enginev1connect"
+	"github.com/jhump/protoreflect/desc"
 
 	_ "github.com/goccy/go-json"
 	pb "github.com/schollz/progressbar/v3"
@@ -23,6 +25,58 @@ import (
 
 	structpb "google.golang.org/protobuf/types/known/structpb"
 )
+
+var customerList []string
+var merchantList []string
+var totalTxn int64 = 7223838 //1658 or 7223838
+
+func dataFunc(mtd *desc.MethodDescriptor, cd *runner.CallData) []byte {
+	inputs := make(map[string]*structpb.Value)
+	inputs["user.id"] = structpb.NewStringValue(customerList[cd.RequestNumber%totalTxn])
+	inputs["merchant.id"] = structpb.NewStringValue(merchantList[cd.RequestNumber%totalTxn])
+
+	fmt.Printf("userId: %s \n", customerList[cd.RequestNumber%totalTxn])
+	fmt.Printf("merchantId: %s \n", merchantList[cd.RequestNumber%totalTxn])
+
+	outputsList := []string{
+		"feature1",
+		"feature2",
+	}
+
+	outputsProcessed := make([]*commonv1.OutputExpr, len(outputsList))
+	for i := 0; i < len(outputsProcessed); i++ {
+		outputsProcessed[i] = &commonv1.OutputExpr{
+			Expr: &commonv1.OutputExpr_FeatureFqn{
+				FeatureFqn: outputsList[i],
+			},
+		}
+	}
+	oqr := commonv1.OnlineQueryRequest{
+		Inputs:  inputs,
+		Outputs: outputsProcessed,
+	}
+	binaryData, err := proto.Marshal(&oqr)
+	if err != nil {
+		fmt.Printf("Failed to marshal online query request with inputs: '%s' and outputs: '%s'\n", inputs, outputsProcessed)
+		os.Exit(1)
+	}
+	return binaryData
+}
+
+func readFile(path string) ([]string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var lines []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	return lines, scanner.Err()
+}
 
 func pbar(t time.Duration, wg *sync.WaitGroup) {
 	defer wg.Done()
@@ -44,11 +98,11 @@ var rootCmd = &cobra.Command{
 	Long:  `This should be run on a node close to the client's sandbox`,
 	Run: func(cmd *cobra.Command, args []string) {
 		client, err := chalk.NewClient(&chalk.ClientConfig{
-			ApiServer:    host,
-			ClientId:     clientId,
-			ClientSecret: clientSecret,
-			// EnvironmentId: environment,
-			UseGrpc: true,
+			ApiServer:     host,
+			ClientId:      clientId,
+			ClientSecret:  clientSecret,
+			EnvironmentId: "fiskridk7pfd",
+			UseGrpc:       true,
 		})
 		if err != nil {
 			fmt.Printf("Failed to create client with error: %s\n", err)
@@ -58,9 +112,14 @@ var rootCmd = &cobra.Command{
 		tmpd := WriteEmbeddedDirToTmp()
 		cd := CurDir()
 
-		tokenResult, err := client.GetToken()
-		grpcHost := strings.TrimPrefix(strings.TrimPrefix(tokenResult.Engines[tokenResult.PrimaryEnvironment], "https://"), "http://")
+		fmt.Println("READING PARQUET FILES")
+		customerList, _ = readFile("./scrambled_customer.txt")
+		merchantList, _ = readFile("./scrambled_merchant.txt")
 
+		tokenResult, err := client.GetToken()
+		grpcHost := strings.TrimPrefix(strings.TrimPrefix(tokenResult.Engines["fiskridk7pfd"], "https://"), "http://")
+
+		fmt.Printf("grpcHost: %s \n", tokenResult.Engines)
 		var result *runner.Report
 		var wg sync.WaitGroup
 
@@ -95,42 +154,47 @@ var rootCmd = &cobra.Command{
 			wg.Add(1)
 			go pbar(durationFlag, &wg)
 
-			if inputStr == nil && inputNum == nil {
-				fmt.Println("No inputs provided, please provide inputs with either the `--in_num` or the `--in_str` flags")
-				os.Exit(1)
-			}
-			inputsProcessed := make(map[string]*structpb.Value)
-			for k, v := range inputNum {
-				inputsProcessed[k] = structpb.NewNumberValue(float64(v))
-			}
+			// if inputStr == nil && inputNum == nil {
+			// 	fmt.Println("No inputs provided, please provide inputs with either the `--in_num` or the `--in_str` flags")
+			// 	os.Exit(1)
+			// }
+			// inputsProcessed := make(map[string]*structpb.Value)
+			// for k, v := range inputNum {
+			// 	fmt.Printf("key for input num: %s \n", k)
+			// 	fmt.Printf("value for input num: %s \n", strconv.FormatInt(v, 10))
+			// 	inputsProcessed[k] = structpb.NewNumberValue(float64(v))
+			// }
 
-			for k, v := range inputStr {
-				inputsProcessed[k] = structpb.NewStringValue(v)
-			}
+			// for k, v := range inputStr {
+			// 	fmt.Printf("key for input str: %s \n", k)
+			// 	fmt.Printf("value for input str: %s \n", v)
+			// 	inputsProcessed[k] = structpb.NewStringValue(v)
+			// }
 
-			outputsProcessed := make([]*commonv1.OutputExpr, len(output))
-			for i := 0; i < len(outputsProcessed); i++ {
-				outputsProcessed[i] = &commonv1.OutputExpr{
-					Expr: &commonv1.OutputExpr_FeatureFqn{
-						FeatureFqn: output[i],
-					},
-				}
-			}
+			// outputsProcessed := make([]*commonv1.OutputExpr, len(output))
+			// for i := 0; i < len(outputsProcessed); i++ {
+			// 	fmt.Printf("Defined output: %s \n", output[i])
+			// 	outputsProcessed[i] = &commonv1.OutputExpr{
+			// 		Expr: &commonv1.OutputExpr_FeatureFqn{
+			// 			FeatureFqn: output[i],
+			// 		},
+			// 	}
+			// }
 
-			oqr := commonv1.OnlineQueryRequest{
-				Inputs:  inputsProcessed,
-				Outputs: outputsProcessed,
-			}
-			if useNativeSql {
-				oqr.Context = &commonv1.OnlineQueryContext{Options: map[string]*structpb.Value{
-					"use_native_sql_operators": structpb.NewBoolValue(true),
-				}}
-			}
-			binaryData, err := proto.Marshal(&oqr)
-			if err != nil {
-				fmt.Printf("Failed to marshal online query request with inputs: '%s' and outputs: '%s'\n", inputsProcessed, outputsProcessed)
-				os.Exit(1)
-			}
+			// oqr := commonv1.OnlineQueryRequest{
+			// 	Inputs:  inputsProcessed,
+			// 	Outputs: outputsProcessed,
+			// }
+			// if useNativeSql {
+			// 	oqr.Context = &commonv1.OnlineQueryContext{Options: map[string]*structpb.Value{
+			// 		"use_native_sql_operators": structpb.NewBoolValue(true),
+			// 	}}
+			// }
+			// binaryData, err := proto.Marshal(&oqr)
+			// if err != nil {
+			// 	fmt.Printf("Failed to marshal online query request with inputs: '%s' and outputs: '%s'\n", inputsProcessed, outputsProcessed)
+			// 	os.Exit(1)
+			// }
 
 			totalRequests := uint(float64(rps) * float64(durationFlag/time.Second))
 			result, err = runner.Run(
@@ -148,7 +212,7 @@ var rootCmd = &cobra.Command{
 				runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{filepath.Join(tmpd, "protos")}),
 				runner.WithSkipTLSVerify(true),
 				runner.WithConcurrency(16),
-				runner.WithBinaryData(binaryData),
+				runner.WithBinaryDataFunc(dataFunc),
 			)
 			if err != nil {
 				fmt.Printf("Failed to run online query with err: %s\n", err)

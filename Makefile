@@ -27,7 +27,7 @@ $(LINUX):
 	env GOOS=linux GOARCH=amd64 go build -v -o $(LINUX) -ldflags="-s -w -X main.version=$(VERSION)"  .
 
 $(DARWIN):
-	env GOOS=darwin GOARCH=amd64 go build -v -o $(DARWIN) -ldflags="-s -w -X main.version=$(VERSION)"  .
+	env GOOS=darwin GOARCH=arm64 go build -v -o $(DARWIN) -ldflags="-s -w -X main.version=$(VERSION)"  .
 
 clean: ## Remove previous build
 	rm -f $(WINDOWS) $(LINUX) $(DARWIN)
