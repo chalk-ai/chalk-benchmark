@@ -44,11 +44,11 @@ var rootCmd = &cobra.Command{
 	Long:  `This should be run on a node close to the client's sandbox`,
 	Run: func(cmd *cobra.Command, args []string) {
 		client, err := chalk.NewClient(&chalk.ClientConfig{
-			ApiServer:    host,
-			ClientId:     clientId,
-			ClientSecret: clientSecret,
-			// EnvironmentId: environment,
-			UseGrpc: true,
+			ApiServer:     host,
+			ClientId:      clientId,
+			ClientSecret:  clientSecret,
+			EnvironmentId: "fiskridk7pfd",
+			UseGrpc:       true,
 		})
 		if err != nil {
 			fmt.Printf("Failed to create client with error: %s\n", err)
@@ -59,7 +59,7 @@ var rootCmd = &cobra.Command{
 		cd := CurDir()
 
 		tokenResult, err := client.GetToken()
-		grpcHost := strings.TrimPrefix(strings.TrimPrefix(tokenResult.Engines[tokenResult.PrimaryEnvironment], "https://"), "http://")
+		grpcHost := strings.TrimPrefix(strings.TrimPrefix(tokenResult.Engines["fiskridk7pfd"], "https://"), "http://")
 
 		var result *runner.Report
 		var wg sync.WaitGroup
