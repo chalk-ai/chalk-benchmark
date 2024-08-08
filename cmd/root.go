@@ -48,7 +48,7 @@ func pbar(t time.Duration, rampDuration time.Duration, wg *sync.WaitGroup) {
 		progress.OptionSetPredictTime(false),
 		progress.OptionFullWidth(),
 	)
-	fmt.Println("Running load test...")
+	fmt.Println("\nRunning load test...")
 	for i := int64(0); i < int64(t.Seconds()); i++ {
 		bar.Add(1)
 		time.Sleep(1 * time.Second)
