@@ -42,7 +42,6 @@ func pbar(t time.Duration, rampDuration time.Duration, wg *sync.WaitGroup) {
 			rampBar.Add(1)
 			time.Sleep(1 * time.Second)
 		}
-
 	}
 	bar := progress.NewOptions(
 		int(t.Seconds()),
@@ -136,7 +135,6 @@ var rootCmd = &cobra.Command{
 
 			if queryName != "" {
 				queryContext = commonv1.OnlineQueryContext{QueryName: &queryName}
-
 			}
 			oqr := commonv1.OnlineQueryRequest{
 				Inputs:  inputsProcessed,
