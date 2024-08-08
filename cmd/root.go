@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,7 +17,7 @@ import (
 	"github.com/chalk-ai/chalk-go/gen/chalk/engine/v1/enginev1connect"
 
 	_ "github.com/goccy/go-json"
-	pb "github.com/schollz/progressbar/v3"
+	progress "github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"google.golang.org/protobuf/proto"
@@ -24,15 +25,31 @@ import (
 	structpb "google.golang.org/protobuf/types/known/structpb"
 )
 
-func pbar(t time.Duration, wg *sync.WaitGroup) {
+const MinRPSForRamp = 20
+const DefaultLoadRampStart = 2
+
+func pbar(t time.Duration, rampDuration time.Duration, wg *sync.WaitGroup) {
 	defer wg.Done()
-	secondsInt := int64(t.Seconds())
-	bar := pb.NewOptions(
-		int(secondsInt),
-		pb.OptionSetPredictTime(false),
-		pb.OptionFullWidth(),
+	rampBar := progress.NewOptions(
+		int(rampDuration.Seconds()),
+		progress.OptionSetPredictTime(false),
+		progress.OptionFullWidth(),
 	)
-	for i := int64(0); i < secondsInt; i++ {
+	if float64(rampDuration) != 0 {
+		fmt.Println("Ramping up load test...")
+		for i := int64(0); i < int64(rampDuration.Seconds()); i++ {
+			rampBar.Add(1)
+			time.Sleep(1 * time.Second)
+		}
+
+	}
+	bar := progress.NewOptions(
+		int(t.Seconds()),
+		progress.OptionSetPredictTime(false),
+		progress.OptionFullWidth(),
+	)
+	fmt.Println("Running load test...")
+	for i := int64(0); i < int64(t.Seconds()); i++ {
 		bar.Add(1)
 		time.Sleep(1 * time.Second)
 	}
@@ -92,8 +109,6 @@ var rootCmd = &cobra.Command{
 			os.Exit(0)
 
 		} else {
-			wg.Add(1)
-			go pbar(durationFlag, &wg)
 
 			if inputStr == nil && inputNum == nil {
 				fmt.Println("No inputs provided, please provide inputs with either the `--in_num` or the `--in_str` flags")
@@ -133,12 +148,10 @@ var rootCmd = &cobra.Command{
 			}
 
 			totalRequests := uint(float64(rps) * float64(durationFlag/time.Second))
-			result, err = runner.Run(
-				strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryProcedure, "/"),
-				grpcHost,
+			runnerOptions := []runner.Option{
 				runner.WithRPS(rps),
-				runner.WithTotalRequests(totalRequests),
 				runner.WithAsync(true),
+				runner.WithTotalRequests(totalRequests),
 				runner.WithConnections(16),
 				runner.WithMetadata(map[string]string{
 					"authorization":           fmt.Sprintf("Bearer %s", tokenResult.AccessToken),
@@ -149,6 +162,53 @@ var rootCmd = &cobra.Command{
 				runner.WithSkipTLSVerify(true),
 				runner.WithConcurrency(16),
 				runner.WithBinaryData(binaryData),
+			}
+
+			if rps > MinRPSForRamp {
+				rampDurationSeconds := uint(math.Floor(float64(rampDuration / time.Second)))
+
+				step := uint(math.Floor(float64(rps) / float64(rampDurationSeconds)))
+
+				loadEnd := step * rampDurationSeconds
+
+				numWarmUpQueries := (rampDurationSeconds / 2) * (2*DefaultLoadRampStart + (rampDurationSeconds-1)*step)
+				fmt.Printf("Ramping up to %d RPS over %d seconds with %d warm-up queries\n", rps, rampDurationSeconds, numWarmUpQueries)
+
+				if step >= 0 {
+					runnerOptions = []runner.Option{
+						runner.WithTotalRequests(totalRequests + numWarmUpQueries),
+						runner.WithLoadSchedule("line"),
+						runner.WithLoadStart(DefaultLoadRampStart),
+						runner.WithLoadEnd(loadEnd),
+						runner.WithLoadStep(int(step)),
+						runner.WithSkipFirst(numWarmUpQueries),
+						runner.WithRPS(rps),
+						runner.WithAsync(true),
+						runner.WithConnections(16),
+						runner.WithMetadata(map[string]string{
+							"authorization":           fmt.Sprintf("Bearer %s", tokenResult.AccessToken),
+							"x-chalk-env-id":          tokenResult.PrimaryEnvironment,
+							"x-chalk-deployment-type": "engine-grpc",
+						}),
+						runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{filepath.Join(tmpd, "protos")}),
+						runner.WithSkipTLSVerify(true),
+						runner.WithConcurrency(16),
+						runner.WithBinaryData(binaryData),
+					}
+				}
+				// add extra queries total request
+				totalRequests += numWarmUpQueries
+
+			} else {
+				rampDuration = time.Duration(0)
+			}
+			wg.Add(1)
+			go pbar(durationFlag, rampDuration, &wg)
+
+			result, err = runner.Run(
+				strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryProcedure, "/"),
+				grpcHost,
+				runnerOptions...,
 			)
 			if err != nil {
 				fmt.Printf("Failed to run online query with err: %s\n", err)
@@ -212,6 +272,7 @@ var output []string
 var outputFile string
 var useNativeSql bool
 var includeRequestMetadata bool
+var rampDuration time.Duration
 
 func init() {
 	viper.AutomaticEnv()
@@ -219,6 +280,7 @@ func init() {
 	flags.BoolVarP(&test, "test", "t", false, "Ping the GRPC engine to make sure the benchmarking tool can reach the engine.")
 	flags.UintVarP(&rps, "rps", "r", 1, "Number of concurrent requests")
 	flags.DurationVarP(&durationFlag, "duration", "d", time.Duration(60.0*float64(time.Second)), "Amount of time to run the benchmark (for example, '60s').")
+	flags.DurationVar(&rampDuration, "ramp_duration", time.Duration(10.0*float64(time.Second)), "Amount of time to run the benchmark (for example, '60s').")
 	flags.StringVarP(&clientId, "client_id", "c", os.Getenv("CHALK_CLIENT_ID"), "client_id for your environment.")
 	flags.StringVarP(&clientSecret, "client_secret", "s", os.Getenv("CHALK_CLIENT_SECRET"), "client_secret for your environment.")
 	flags.StringToStringVar(&inputStr, "in_str", nil, "string input features to the online query, for instance: 'user.id=xwdw,user.name'John'")
