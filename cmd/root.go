@@ -315,6 +315,7 @@ var includeRequestMetadata bool
 var rampDuration time.Duration
 var queryName string
 
+
 func init() {
 	viper.AutomaticEnv()
 	flags := rootCmd.Flags()
