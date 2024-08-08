@@ -315,7 +315,6 @@ var includeRequestMetadata bool
 var rampDuration time.Duration
 var queryName string
 
-
 func init() {
 	viper.AutomaticEnv()
 	flags := rootCmd.Flags()
@@ -334,5 +333,4 @@ func init() {
 	flags.StringVar(&host, "host", "https://api.chalk.ai", "API server url—in host cases, this default will work.")
 	flags.BoolVar(&useNativeSql, "native_sql", false, "Whether to use the `use_native_sql_operators` planner option.")
 	flags.BoolVar(&includeRequestMetadata, "include_request_md", false, "Whether to include request metadata in the report: this defaults to false since a true value includes the auth token.")
-
 }
