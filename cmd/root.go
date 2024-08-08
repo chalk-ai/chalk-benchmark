@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/spf13/pflag"
 	"math"
 	"os"
 	"path/filepath"
@@ -131,10 +132,16 @@ var rootCmd = &cobra.Command{
 					},
 				}
 			}
+			var queryContext commonv1.OnlineQueryContext
 
+			if queryName != "" {
+				queryContext = commonv1.OnlineQueryContext{QueryName: &queryName}
+
+			}
 			oqr := commonv1.OnlineQueryRequest{
 				Inputs:  inputsProcessed,
 				Outputs: outputsProcessed,
+				Context: &queryContext,
 			}
 			if useNativeSql {
 				oqr.Context = &commonv1.OnlineQueryContext{Options: map[string]*structpb.Value{
@@ -260,6 +267,39 @@ func Execute() {
 	}
 }
 
+func normalizeFlagNames(f *pflag.FlagSet, name string) pflag.NormalizedName {
+	switch name {
+	case "client_id":
+		name = "client-id"
+		break
+	case "client_secret":
+		name = "client-secret"
+		break
+	case "in_str":
+		name = "in-str"
+		break
+	case "in_num":
+		name = "in-num"
+		break
+	case "output_file":
+		name = "output-file"
+		break
+	case "native_sql":
+		name = "native-sql"
+		break
+	case "include_request_md":
+		name = "include-request-md"
+		break
+	case "ramp_duration":
+		name = "ramp-duration"
+		break
+	case "query_name":
+		name = "query-name"
+		break
+	}
+	return pflag.NormalizedName(name)
+}
+
 var rps uint
 var durationFlag time.Duration
 var test bool
@@ -273,21 +313,25 @@ var outputFile string
 var useNativeSql bool
 var includeRequestMetadata bool
 var rampDuration time.Duration
+var queryName string
 
 func init() {
 	viper.AutomaticEnv()
 	flags := rootCmd.Flags()
+	flags.SetNormalizeFunc(normalizeFlagNames)
 	flags.BoolVarP(&test, "test", "t", false, "Ping the GRPC engine to make sure the benchmarking tool can reach the engine.")
-	flags.UintVarP(&rps, "rps", "r", 1, "Number of concurrent requests")
-	flags.DurationVarP(&durationFlag, "duration", "d", time.Duration(60.0*float64(time.Second)), "Amount of time to run the benchmark (for example, '60s').")
+	flags.UintVarP(&rps, "rps", "r", 1, "Number of concurrent requests.")
+	flags.DurationVarP(&durationFlag, "duration", "d", time.Duration(60.0*float64(time.Second)), "Amount of time to run the ramp up for the benchmark (only applies if the RPS>20)")
 	flags.DurationVar(&rampDuration, "ramp_duration", time.Duration(10.0*float64(time.Second)), "Amount of time to run the benchmark (for example, '60s').")
 	flags.StringVarP(&clientId, "client_id", "c", os.Getenv("CHALK_CLIENT_ID"), "client_id for your environment.")
 	flags.StringVarP(&clientSecret, "client_secret", "s", os.Getenv("CHALK_CLIENT_SECRET"), "client_secret for your environment.")
-	flags.StringToStringVar(&inputStr, "in_str", nil, "string input features to the online query, for instance: 'user.id=xwdw,user.name'John'")
+	flags.StringToStringVar(&inputStr, "in_str", nil, "string input features to the online query, for instance: 'user.id=xwdw,user.name'John'.")
 	flags.StringToInt64Var(&inputNum, "in_num", nil, "numeric input features to the online query, for instance 'user.id=1,user.age=28'")
-	flags.StringArrayVar(&output, "out", nil, "target output features for the online query, for instance: 'user.is_fraud'")
+	flags.StringVar(&queryName, "query_name", "", "Query name for the benchmark query.")
+	flags.StringArrayVar(&output, "out", nil, "target output features for the online query, for instance: 'user.is_fraud'.")
 	flags.StringVar(&outputFile, "output_file", "result.html", "Output filename for the saved report.")
 	flags.StringVar(&host, "host", "https://api.chalk.ai", "API server url—in host cases, this default will work.")
 	flags.BoolVar(&useNativeSql, "native_sql", false, "Whether to use the `use_native_sql_operators` planner option.")
 	flags.BoolVar(&includeRequestMetadata, "include_request_md", false, "Whether to include request metadata in the report: this defaults to false since a true value includes the auth token.")
+
 }
