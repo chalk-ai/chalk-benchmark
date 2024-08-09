@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"github.com/apache/arrow/go/v16/arrow/memory"
 	"github.com/spf13/pflag"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -10,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	parquetFile "github.com/apache/arrow/go/v16/parquet/file"
+	"github.com/apache/arrow/go/v16/parquet/pqarrow"
 	"github.com/bojand/ghz/printer"
 	"github.com/bojand/ghz/runner"
 	"github.com/chalk-ai/chalk-go"
@@ -108,6 +113,61 @@ var rootCmd = &cobra.Command{
 			fmt.Printf("Successfully pinged GRPC Engine")
 			os.Exit(0)
 
+		} else if uploadFeatures {
+			file, err := os.Open(uploadFeaturesFile)
+			if err != nil {
+				fmt.Printf("Failed to open file with err: %s\n", err)
+				os.Exit(1)
+			}
+			defer file.Close()
+
+			// Read the entire file
+			data, err := io.ReadAll(file)
+			if err != nil {
+				fmt.Printf("Failed to read file with err: %s\n", err)
+				os.Exit(1)
+			}
+			request := commonv1.UploadFeaturesBulkRequest{
+				InputsFeather: data,
+				BodyType:      commonv1.FeatherBodyType_FEATHER_BODY_TYPE_RECORD_BATCHES,
+			}
+			binaryData, err := proto.Marshal(&request)
+			if err != nil {
+				fmt.Printf("Failed to marshal upload features request with err: %s\n", err)
+				os.Exit(1)
+			}
+			result, err = runner.Run(
+				strings.TrimPrefix(enginev1connect.QueryServiceUploadFeaturesBulkProcedure, "/"),
+				grpcHost,
+				runner.WithRPS(rps),
+				runner.WithAsync(true),
+				runner.WithTotalRequests(1000),
+				runner.WithConnections(16),
+				runner.WithMetadata(map[string]string{
+					"authorization":           fmt.Sprintf("Bearer %s", tokenResult.AccessToken),
+					"x-chalk-env-id":          tokenResult.PrimaryEnvironment,
+					"x-chalk-deployment-type": "engine-grpc",
+				}),
+				runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{filepath.Join(tmpd, "protos")}),
+				runner.WithSkipTLSVerify(true),
+				runner.WithConcurrency(16),
+				runner.WithBinaryData(binaryData),
+			)
+			if err != nil {
+				fmt.Printf("Failed to run request with err: %s\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("Successfully uploaded features to Chalk")
+
+			p := printer.ReportPrinter{
+				Out:    os.Stdout,
+				Report: result,
+			}
+			if err := p.Print("summary"); err != nil {
+				fmt.Printf("Failed to print report with error: %s\n", err)
+				os.Exit(1)
+			}
+			os.Exit(0)
 		} else {
 
 			if inputStr == nil && inputNum == nil {
@@ -258,6 +318,19 @@ var rootCmd = &cobra.Command{
 	},
 }
 
+func getParquetFileRecordReader(featuresFile string) (pqarrow.RecordReader, error) {
+	file, err := parquetFile.OpenParquetFile(featuresFile, false)
+
+	if err != nil {
+		return nil, err
+	}
+	reader, err := pqarrow.NewFileReader(file, pqarrow.ArrowReadProperties{}, memory.DefaultAllocator)
+	if err != nil {
+		return nil, err
+	}
+	return reader.GetRecordReader(context.Background(), nil, nil)
+}
+
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {
@@ -312,6 +385,8 @@ var useNativeSql bool
 var includeRequestMetadata bool
 var rampDuration time.Duration
 var queryName string
+var uploadFeatures bool
+var uploadFeaturesFile string
 
 func init() {
 	viper.AutomaticEnv()
@@ -331,4 +406,6 @@ func init() {
 	flags.StringVar(&host, "host", "https://api.chalk.ai", "API server url—in host cases, this default will work.")
 	flags.BoolVar(&useNativeSql, "native_sql", false, "Whether to use the `use_native_sql_operators` planner option.")
 	flags.BoolVar(&includeRequestMetadata, "include_request_md", false, "Whether to include request metadata in the report: this defaults to false since a true value includes the auth token.")
+	flags.BoolVar(&uploadFeatures, "upload_features", false, "Whether to upload features to Chalk.")
+	flags.StringVar(&uploadFeaturesFile, "upload_features_file", "", "File containing features to upload to Chalk.")
 }
