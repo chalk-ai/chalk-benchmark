@@ -19,13 +19,12 @@ RUN --mount=type=cache,target=/gomod-cache \
 # Run stage
 FROM --platform=linux/amd64 debian:bookworm-slim
 
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
 # Copy the built binary from the builder stage
 COPY --from=builder /app/chalk-benchmark /usr/local/bin/chalk-benchmark
 
 # Set the working directory
 WORKDIR /app
 
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=builder /app/go-api-server/go-api-server /app/go-api-server/go-api-server
-
-CMD ["/app/chalk-benchmark/chalk-benchmark", "grpc", "--log-json"]
+CMD ["/usr/local/bin/chalk-benchmark", "grpc", "--log-json"]
