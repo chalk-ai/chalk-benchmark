@@ -28,7 +28,7 @@ jobs:
         uses: google-github-actions/auth@v2.1.3
         with:
           workload_identity_provider: 'projects/800169929024/locations/global/workloadIdentityPools/github-actions/providers/github'
-          service_account: 'chalk-private-github-actions@chalk-ci-testing.iam.gserviceaccount.com	'
+          service_account: 'chalk-benchmark-github-actions@chalk-ci-testing.iam.gserviceaccount.com'
 
       - name: Configure Docker to use the gcloud command-line tool as a credential helper
         run: |
