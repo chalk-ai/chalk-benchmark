@@ -201,11 +201,10 @@ var rootCmd = &cobra.Command{
 				Outputs: outputsProcessed,
 				Context: &queryContext,
 			}
-			if useNativeSql {
-				oqr.Context = &commonv1.OnlineQueryContext{Options: map[string]*structpb.Value{
-					"use_native_sql_operators": structpb.NewBoolValue(true),
-				}}
-			}
+			oqr.Context = &commonv1.OnlineQueryContext{Options: map[string]*structpb.Value{
+				"use_native_sql_operators":      structpb.NewBoolValue(useNativeSql),
+				"static_underscore_expressions": structpb.NewBoolValue(staticUnderscoreExprs),
+			}}
 			binaryData, err := proto.Marshal(&oqr)
 			if err != nil {
 				fmt.Printf("Failed to marshal online query request with inputs: '%s' and outputs: '%s'\n", inputsProcessed, outputsProcessed)
@@ -382,6 +381,7 @@ var inputNum map[string]int64
 var output []string
 var outputFile string
 var useNativeSql bool
+var staticUnderscoreExprs bool
 var includeRequestMetadata bool
 var rampDuration time.Duration
 var queryName string
@@ -405,6 +405,7 @@ func init() {
 	flags.StringVar(&outputFile, "output_file", "result.html", "Output filename for the saved report.")
 	flags.StringVar(&host, "host", "https://api.chalk.ai", "API server url—in host cases, this default will work.")
 	flags.BoolVar(&useNativeSql, "native_sql", false, "Whether to use the `use_native_sql_operators` planner option.")
+	flags.BoolVar(&staticUnderscoreExprs, "static_underscore", false, "Whether to use the `static_underscore_expressions` planner option.")
 	flags.BoolVar(&includeRequestMetadata, "include_request_md", false, "Whether to include request metadata in the report: this defaults to false since a true value includes the auth token.")
 	flags.BoolVar(&uploadFeatures, "upload_features", false, "Whether to upload features to Chalk.")
 	flags.StringVar(&uploadFeaturesFile, "upload_features_file", "", "File containing features to upload to Chalk.")
