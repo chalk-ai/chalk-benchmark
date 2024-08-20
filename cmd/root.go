@@ -248,7 +248,7 @@ var rootCmd = &cobra.Command{
 						runner.WithSkipFirst(numWarmUpQueries),
 						runner.WithRPS(rps),
 						runner.WithAsync(true),
-						runner.WithConnections(16),
+						runner.WithConnections(numConnections),
 						runner.WithMetadata(map[string]string{
 							"authorization":           fmt.Sprintf("Bearer %s", tokenResult.AccessToken),
 							"x-chalk-env-id":          tokenResult.PrimaryEnvironment,
@@ -256,7 +256,7 @@ var rootCmd = &cobra.Command{
 						}),
 						runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{filepath.Join(tmpd, "protos")}),
 						runner.WithSkipTLSVerify(true),
-						runner.WithConcurrency(16),
+						runner.WithConcurrency(concurrency),
 						runner.WithBinaryData(binaryData),
 					}
 				}
@@ -370,6 +370,9 @@ func normalizeFlagNames(f *pflag.FlagSet, name string) pflag.NormalizedName {
 	case "query_name":
 		name = "query-name"
 		break
+	case "num_connections":
+		name = "num-connections"
+		break
 	}
 	return pflag.NormalizedName(name)
 }
@@ -391,6 +394,8 @@ var rampDuration time.Duration
 var queryName string
 var uploadFeatures bool
 var uploadFeaturesFile string
+var numConnections uint
+var concurrency uint
 
 func init() {
 	viper.AutomaticEnv()
@@ -412,5 +417,8 @@ func init() {
 	flags.BoolVar(&staticUnderscoreExprs, "static_underscore", true, "Whether to use the `static_underscore_expressions` planner option.")
 	flags.BoolVar(&includeRequestMetadata, "include_request_md", false, "Whether to include request metadata in the report: this defaults to false since a true value includes the auth token.")
 	flags.BoolVar(&uploadFeatures, "upload_features", false, "Whether to upload features to Chalk.")
+	flags.StringVar(&uploadFeaturesFile, "upload_features_file", "", "File containing features to upload to Chalk.")
+	flags.UintVar(&numConnections, "num_connections", 16, "Number of connections for requests.")
+	flags.UintVar(&concurrency, "concurrency", 16, "Concurrency for requests.")
 	flags.StringVar(&uploadFeaturesFile, "upload_features_file", "", "File containing features to upload to Chalk.")
 }
