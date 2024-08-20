@@ -420,5 +420,4 @@ func init() {
 	flags.StringVar(&uploadFeaturesFile, "upload_features_file", "", "File containing features to upload to Chalk.")
 	flags.UintVar(&numConnections, "num_connections", 16, "Number of connections for requests.")
 	flags.UintVar(&concurrency, "concurrency", 16, "Concurrency for requests.")
-	flags.StringVar(&uploadFeaturesFile, "upload_features_file", "", "File containing features to upload to Chalk.")
 }
