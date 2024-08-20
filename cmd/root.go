@@ -285,6 +285,10 @@ var rootCmd = &cobra.Command{
 			Report: result,
 		}
 
+		// Correct Total Time & RPS calculations to exclude ramp up time
+		result.Total = result.Total - rampDuration
+		result.Rps = float64(result.Count) / result.Total.Seconds()
+
 		err = p.Print("summary")
 		if err != nil {
 			fmt.Printf("Failed to print report with error: %s\n", err)
