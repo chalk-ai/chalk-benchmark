@@ -15,12 +15,12 @@ import (
 
 	parquetFile "github.com/apache/arrow/go/v16/parquet/file"
 	"github.com/apache/arrow/go/v16/parquet/pqarrow"
-	"github.com/bojand/ghz/printer"
-	"github.com/bojand/ghz/runner"
 	"github.com/chalk-ai/chalk-go"
 	commonv1 "github.com/chalk-ai/chalk-go/gen/chalk/common/v1"
 	enginev1 "github.com/chalk-ai/chalk-go/gen/chalk/engine/v1"
 	"github.com/chalk-ai/chalk-go/gen/chalk/engine/v1/enginev1connect"
+	"github.com/chalk-ai/ghz/printer"
+	"github.com/chalk-ai/ghz/runner"
 
 	_ "github.com/goccy/go-json"
 	progress "github.com/schollz/progressbar/v3"
@@ -33,6 +33,12 @@ import (
 
 const MinRPSForRamp = 20
 const DefaultLoadRampStart = 2
+
+func processReport(result *runner.Report) {
+	// Correct Total Time & RPS calculations to exclude ramp up time
+	result.Total = result.Total - rampDuration
+	result.Rps = float64(result.Count) / result.Total.Seconds()
+}
 
 func pbar(t time.Duration, rampDuration time.Duration, wg *sync.WaitGroup) {
 	defer wg.Done()
@@ -58,6 +64,7 @@ func pbar(t time.Duration, rampDuration time.Duration, wg *sync.WaitGroup) {
 		bar.Add(1)
 		time.Sleep(1 * time.Second)
 	}
+	fmt.Println("\nDone sending requests, waiting for all responses...")
 }
 
 var rootCmd = &cobra.Command{
@@ -258,6 +265,7 @@ var rootCmd = &cobra.Command{
 						runner.WithSkipTLSVerify(true),
 						runner.WithConcurrency(concurrency),
 						runner.WithBinaryData(binaryData),
+						runner.WithTimeout(timeout),
 					}
 				}
 				// add extra queries total request
@@ -280,14 +288,13 @@ var rootCmd = &cobra.Command{
 			}
 		}
 		wg.Wait()
+
+		fmt.Println("\nPrinting Report...")
+		processReport(result)
 		p := printer.ReportPrinter{
 			Out:    os.Stdout,
 			Report: result,
 		}
-
-		// Correct Total Time & RPS calculations to exclude ramp up time
-		result.Total = result.Total - rampDuration
-		result.Rps = float64(result.Count) / result.Total.Seconds()
 
 		err = p.Print("summary")
 		if err != nil {
@@ -396,6 +403,7 @@ var uploadFeatures bool
 var uploadFeaturesFile string
 var numConnections uint
 var concurrency uint
+var timeout time.Duration
 
 func init() {
 	viper.AutomaticEnv()
@@ -420,4 +428,5 @@ func init() {
 	flags.StringVar(&uploadFeaturesFile, "upload_features_file", "", "File containing features to upload to Chalk.")
 	flags.UintVar(&numConnections, "num_connections", 16, "Number of connections for requests.")
 	flags.UintVar(&concurrency, "concurrency", 16, "Concurrency for requests.")
+	flags.DurationVar(&timeout, "timeout", 20*time.Second, "Timeout for requests.")
 }
