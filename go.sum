@@ -35,6 +35,8 @@ github.com/chalk-ai/chalk-go v0.13.9 h1:bKOxWW5oQekaoV4K5cTKAYSJkxp7Lbkmu87p44kV
 github.com/chalk-ai/chalk-go v0.13.9/go.mod h1:LJ2wJZaX50b1sopWnctOYQOJEug2w3v1a1BC2JWzmX4=
 github.com/chalk-ai/ghz v0.1.12 h1:03X30bCtL13yhxvft8ZGOiPGo+c5UP+ySy7BV9IAzGo=
 github.com/chalk-ai/ghz v0.1.12/go.mod h1:N28yx6mY35alo2DRgjUl08VhUlvgckdaPZFVbIx6DlY=
+github.com/chalk-ai/ghz v0.1.13 h1:ZEffyW9wIWyBprNMasJGDXt12hYQliuKz0CDZNFoS4A=
+github.com/chalk-ai/ghz v0.1.13/go.mod h1:N28yx6mY35alo2DRgjUl08VhUlvgckdaPZFVbIx6DlY=
 github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=
 github.com/cncf/udpa/go v0.0.0-20220112060539-c52dc94e7fbe h1:QQ3GSy+MqSHxm/d8nCtnAiZdYFd45cYZPs8vOOIYKfk=
 github.com/cncf/udpa/go v0.0.0-20220112060539-c52dc94e7fbe/go.mod h1:6pvJx4me5XPnfI9Z40ddWsdw2W/uZgQLFXToKeRcDiI=
