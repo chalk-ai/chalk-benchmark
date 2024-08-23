@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +34,24 @@ import (
 
 const MinRPSForRamp = 20
 const DefaultLoadRampStart = 2
+
+func parseInputsToMap(rawInputs map[string]string, processedMap map[string]*structpb.Value) {
+	// Iterate over the original map and copy the key-value pairs
+	for key, value := range rawInputs {
+		if _, err := strconv.Atoi(value); err == nil {
+			intValue, _ := strconv.ParseInt(value, 10, 64)
+			processedMap[key] = structpb.NewNumberValue(float64(intValue))
+		} else if _, err := strconv.ParseBool(value); err == nil {
+			boolValue, _ := strconv.ParseBool(value)
+			processedMap[key] = structpb.NewBoolValue(boolValue)
+		} else if _, err := strconv.ParseFloat(value, 64); err == nil {
+			floatValue, _ := strconv.ParseFloat(value, 64)
+			processedMap[key] = structpb.NewNumberValue(floatValue)
+		} else {
+			processedMap[key] = structpb.NewStringValue(value)
+		}
+	}
+}
 
 func processReport(result *runner.Report) {
 	// Correct Total Time & RPS calculations to exclude ramp up time
@@ -176,12 +195,15 @@ var rootCmd = &cobra.Command{
 			}
 			os.Exit(0)
 		} else {
-
-			if inputStr == nil && inputNum == nil {
+			if inputStr == nil && inputNum == nil && input == nil {
 				fmt.Println("No inputs provided, please provide inputs with either the `--in_num` or the `--in_str` flags")
 				os.Exit(1)
 			}
 			inputsProcessed := make(map[string]*structpb.Value)
+			if input != nil {
+				parseInputsToMap(input, inputsProcessed)
+			}
+
 			for k, v := range inputNum {
 				inputsProcessed[k] = structpb.NewNumberValue(float64(v))
 			}
@@ -207,6 +229,10 @@ var rootCmd = &cobra.Command{
 				Inputs:  inputsProcessed,
 				Outputs: outputsProcessed,
 				Context: &queryContext,
+			}
+			if verbose {
+				fmt.Printf("Inputs: %v\n", inputsProcessed)
+				fmt.Printf("Outputs: %v\n", outputsProcessed)
 			}
 			oqr.Context = &commonv1.OnlineQueryContext{Options: map[string]*structpb.Value{
 				"use_native_sql_operators":      structpb.NewBoolValue(useNativeSql),
@@ -303,7 +329,7 @@ var rootCmd = &cobra.Command{
 		}
 
 		reportFile := filepath.Join(cd, fmt.Sprintf("%s.html", strings.TrimSuffix(outputFile, ".html")))
-		outputFile, err := os.OpenFile(reportFile, os.O_RDWR|os.O_CREATE, 0660)
+		outputFile, err := os.OpenFile(reportFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0660)
 		if err != nil {
 			fmt.Printf("Failed to open report file with error: %s\n", err)
 			os.Exit(1)
@@ -380,6 +406,9 @@ func normalizeFlagNames(f *pflag.FlagSet, name string) pflag.NormalizedName {
 	case "num_connections":
 		name = "num-connections"
 		break
+	case "host":
+		name = "api-host"
+		break
 	}
 	return pflag.NormalizedName(name)
 }
@@ -404,6 +433,8 @@ var uploadFeaturesFile string
 var numConnections uint
 var concurrency uint
 var timeout time.Duration
+var input map[string]string
+var verbose bool
 
 func init() {
 	viper.AutomaticEnv()
@@ -416,6 +447,7 @@ func init() {
 	flags.StringVarP(&clientId, "client_id", "c", os.Getenv("CHALK_CLIENT_ID"), "client_id for your environment.")
 	flags.StringVarP(&clientSecret, "client_secret", "s", os.Getenv("CHALK_CLIENT_SECRET"), "client_secret for your environment.")
 	flags.StringToStringVar(&inputStr, "in_str", nil, "string input features to the online query, for instance: 'user.id=xwdw,user.name'John'.")
+	flags.StringToStringVar(&input, "in", nil, "input features to the online query, for instance: 'user.id=xwdw,user.name'John'. This flag will try to convert inputs to the right type. If you need to explicitly pass in a number or string, use the `in-num` or `in-str` flag.")
 	flags.StringToInt64Var(&inputNum, "in_num", nil, "numeric input features to the online query, for instance 'user.id=1,user.age=28'")
 	flags.StringVar(&queryName, "query_name", "", "Query name for the benchmark query.")
 	flags.StringArrayVar(&output, "out", nil, "target output features for the online query, for instance: 'user.is_fraud'.")
@@ -429,4 +461,5 @@ func init() {
 	flags.UintVar(&numConnections, "num_connections", 16, "Number of connections for requests.")
 	flags.UintVar(&concurrency, "concurrency", 16, "Concurrency for requests.")
 	flags.DurationVar(&timeout, "timeout", 20*time.Second, "Timeout for requests.")
+	flags.BoolVar(&verbose, "verbose", false, "Whether to print verbose output.")
 }
