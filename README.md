@@ -22,10 +22,10 @@ The binary can be run as follows:
 
 ```sh
 chalk-benchmark \
+  --in user.id=1 \
+  --out user.name \
   --client-id <client-id> \
   --client-secret <client-secret> \
-  --in-num 'user.id=1' \
-  --out 'user.name' \
   --rps=1 --duration=10s
 ```
 
