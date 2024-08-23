@@ -5,7 +5,7 @@ go 1.22.3
 require (
 	github.com/apache/arrow/go/v16 v16.1.0
 	github.com/chalk-ai/chalk-go v0.13.9
-	github.com/chalk-ai/ghz v0.1.13
+	github.com/chalk-ai/ghz v0.1.14
 	github.com/goccy/go-json v0.10.3
 	github.com/schollz/progressbar/v3 v3.14.5
 	github.com/spf13/cobra v1.8.1
