@@ -230,6 +230,10 @@ var rootCmd = &cobra.Command{
 				Outputs: outputsProcessed,
 				Context: &queryContext,
 			}
+			if verbose {
+				fmt.Printf("Inputs: %v\n", inputsProcessed)
+				fmt.Printf("Outputs: %v\n", outputsProcessed)
+			}
 			oqr.Context = &commonv1.OnlineQueryContext{Options: map[string]*structpb.Value{
 				"use_native_sql_operators":      structpb.NewBoolValue(useNativeSql),
 				"static_underscore_expressions": structpb.NewBoolValue(staticUnderscoreExprs),
@@ -325,7 +329,7 @@ var rootCmd = &cobra.Command{
 		}
 
 		reportFile := filepath.Join(cd, fmt.Sprintf("%s.html", strings.TrimSuffix(outputFile, ".html")))
-		outputFile, err := os.OpenFile(reportFile, os.O_RDWR|os.O_CREATE, 0660)
+		outputFile, err := os.OpenFile(reportFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0660)
 		if err != nil {
 			fmt.Printf("Failed to open report file with error: %s\n", err)
 			os.Exit(1)
@@ -430,6 +434,7 @@ var numConnections uint
 var concurrency uint
 var timeout time.Duration
 var input map[string]string
+var verbose bool
 
 func init() {
 	viper.AutomaticEnv()
@@ -456,4 +461,5 @@ func init() {
 	flags.UintVar(&numConnections, "num_connections", 16, "Number of connections for requests.")
 	flags.UintVar(&concurrency, "concurrency", 16, "Concurrency for requests.")
 	flags.DurationVar(&timeout, "timeout", 20*time.Second, "Timeout for requests.")
+	flags.BoolVar(&verbose, "verbose", false, "Whether to print verbose output.")
 }
