@@ -113,7 +113,7 @@ var rootCmd = &cobra.Command{
 			os.Exit(1)
 		}
 		if tokenResult.PrimaryEnvironment == "" && environment == "" {
-			fmt.Printf("Failed to find target environment for benchmark. If you are using your user token instead of a service token, pass the environment id in explicitly using the `--environment` flag")
+			fmt.Printf("Failed to find target environment for benchmark. If you are using your user token instead of a service token, pass the environment id in explicitly using the `--environment` flag\n")
 			os.Exit(1)
 		} else if environment != "" && tokenResult.PrimaryEnvironment == "" {
 			targetEnvironment = environment
@@ -122,7 +122,7 @@ var rootCmd = &cobra.Command{
 		} else if environment == tokenResult.PrimaryEnvironment {
 			targetEnvironment = environment
 		} else {
-			fmt.Printf("Service token environment '%s' does not match the provided environment '%s'", tokenResult.PrimaryEnvironment, environment)
+			fmt.Printf("Service token environment '%s' does not match the provided environment '%s'\n", tokenResult.PrimaryEnvironment, environment)
 			os.Exit(1)
 		}
 		grpcHost := strings.TrimPrefix(strings.TrimPrefix(tokenResult.Engines[targetEnvironment], "https://"), "http://")
@@ -154,7 +154,7 @@ var rootCmd = &cobra.Command{
 				fmt.Printf("Failed to run Ping request with err: %s\n", err)
 				os.Exit(1)
 			}
-			fmt.Printf("Successfully pinged GRPC Engine")
+			fmt.Printf("Successfully pinged GRPC Engine\n")
 			os.Exit(0)
 
 		} else if uploadFeatures {
