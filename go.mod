@@ -4,7 +4,7 @@ go 1.22.3
 
 require (
 	github.com/apache/arrow/go/v16 v16.1.0
-	github.com/chalk-ai/chalk-go v0.16.16
+	github.com/chalk-ai/chalk-go v0.16.7
 	github.com/chalk-ai/ghz v0.1.14
 	github.com/goccy/go-json v0.10.3
 	github.com/schollz/progressbar/v3 v3.14.5
@@ -71,6 +71,7 @@ require (
 	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
+	github.com/samber/lo v1.47.0 // indirect
 	github.com/shopspring/decimal v1.2.0 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.11.0 // indirect
