@@ -87,16 +87,16 @@ func pbar(t time.Duration, rampDuration time.Duration, wg *sync.WaitGroup) {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "chalk-benchmark --client_id <client_id> --client_secret <client_secret> --rps <rps> --duration_seconds <duration_seconds>",
+	Use:   "chalk-benchmark --client-id <client_id> --client-secret <client_secret> --rps <rps> --duration_seconds <duration_seconds> --in user.id=1 --out user.email",
 	Short: "Run load test for chalk grpc",
 	Long:  `This should be run on a node close to the client's sandbox`,
 	Run: func(cmd *cobra.Command, args []string) {
 		client, err := chalk.NewClient(&chalk.ClientConfig{
-			ApiServer:    host,
-			ClientId:     clientId,
-			ClientSecret: clientSecret,
-			// EnvironmentId: environment,
-			UseGrpc: true,
+			ApiServer:     host,
+			ClientId:      clientId,
+			ClientSecret:  clientSecret,
+			EnvironmentId: environment,
+			UseGrpc:       true,
 		})
 		if err != nil {
 			fmt.Printf("Failed to create client with error: %s\n", err)
@@ -244,7 +244,7 @@ var rootCmd = &cobra.Command{
 				os.Exit(1)
 			}
 
-			totalRequests := uint(float64(rps) * float64(durationFlag/time.Second))
+			totalRequests := uint(float64(rps) * float64(benchmarkDuration/time.Second))
 			runnerOptions := []runner.Option{
 				runner.WithRPS(rps),
 				runner.WithAsync(true),
@@ -301,7 +301,7 @@ var rootCmd = &cobra.Command{
 				rampDuration = time.Duration(0)
 			}
 			wg.Add(1)
-			go pbar(durationFlag, rampDuration, &wg)
+			go pbar(benchmarkDuration, rampDuration, &wg)
 
 			result, err = runner.Run(
 				strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryProcedure, "/"),
@@ -376,90 +376,84 @@ func Execute() {
 
 func normalizeFlagNames(f *pflag.FlagSet, name string) pflag.NormalizedName {
 	switch name {
-	case "client_id":
-		name = "client-id"
-		break
-	case "client_secret":
-		name = "client-secret"
-		break
-	case "in_str":
-		name = "in-str"
-		break
-	case "in_num":
-		name = "in-num"
-		break
-	case "output_file":
-		name = "output-file"
-		break
-	case "native_sql":
-		name = "native-sql"
-		break
-	case "include_request_md":
-		name = "include-request-md"
-		break
-	case "ramp_duration":
-		name = "ramp-duration"
-		break
-	case "query_name":
-		name = "query-name"
-		break
-	case "num_connections":
-		name = "num-connections"
-		break
 	case "host":
 		name = "api-host"
+		break
+	default:
+		name = strings.Replace(name, "_", "-", -1)
 		break
 	}
 	return pflag.NormalizedName(name)
 }
 
-var rps uint
-var durationFlag time.Duration
+// benchmark parameters
 var test bool
+var rps uint
+var concurrency uint
+var timeout time.Duration
+var outputFile string
+var benchmarkDuration time.Duration
+var rampDuration time.Duration
+var numConnections uint
+
+// environment & client parameters
 var host string
 var clientId string
 var clientSecret string
+var environment string
+
+// input & output parameters
+var input map[string]string
 var inputStr map[string]string
 var inputNum map[string]int64
 var output []string
-var outputFile string
-var useNativeSql bool
-var staticUnderscoreExprs bool
-var includeRequestMetadata bool
-var rampDuration time.Duration
-var queryName string
 var uploadFeatures bool
 var uploadFeaturesFile string
-var numConnections uint
-var concurrency uint
-var timeout time.Duration
-var input map[string]string
+var queryName string
+
+// planner options
+var useNativeSql bool
+var staticUnderscoreExprs bool
+
+// other parameters
+var includeRequestMetadata bool
 var verbose bool
 
 func init() {
 	viper.AutomaticEnv()
 	flags := rootCmd.Flags()
 	flags.SetNormalizeFunc(normalizeFlagNames)
+
+	// benchmark parameters
 	flags.BoolVarP(&test, "test", "t", false, "Ping the GRPC engine to make sure the benchmarking tool can reach the engine.")
 	flags.UintVarP(&rps, "rps", "r", 1, "Number of concurrent requests.")
-	flags.DurationVarP(&durationFlag, "duration", "d", time.Duration(60.0*float64(time.Second)), "Amount of time to run the ramp up for the benchmark (only applies if the RPS>20)")
-	flags.DurationVar(&rampDuration, "ramp_duration", time.Duration(10.0*float64(time.Second)), "Amount of time to run the benchmark (for example, '60s').")
-	flags.StringVarP(&clientId, "client_id", "c", os.Getenv("CHALK_CLIENT_ID"), "client_id for your environment.")
-	flags.StringVarP(&clientSecret, "client_secret", "s", os.Getenv("CHALK_CLIENT_SECRET"), "client_secret for your environment.")
-	flags.StringToStringVar(&inputStr, "in_str", nil, "string input features to the online query, for instance: 'user.id=xwdw,user.name'John'.")
-	flags.StringToStringVar(&input, "in", nil, "input features to the online query, for instance: 'user.id=xwdw,user.name'John'. This flag will try to convert inputs to the right type. If you need to explicitly pass in a number or string, use the `in-num` or `in-str` flag.")
-	flags.StringToInt64Var(&inputNum, "in_num", nil, "numeric input features to the online query, for instance 'user.id=1,user.age=28'")
-	flags.StringVar(&queryName, "query_name", "", "Query name for the benchmark query.")
-	flags.StringArrayVar(&output, "out", nil, "target output features for the online query, for instance: 'user.is_fraud'.")
-	flags.StringVar(&outputFile, "output_file", "result.html", "Output filename for the saved report.")
 	flags.StringVar(&host, "host", "https://api.chalk.ai", "API server url—in host cases, this default will work.")
-	flags.BoolVar(&useNativeSql, "native_sql", false, "Whether to use the `use_native_sql_operators` planner option.")
-	flags.BoolVar(&staticUnderscoreExprs, "static_underscore", true, "Whether to use the `static_underscore_expressions` planner option.")
-	flags.BoolVar(&includeRequestMetadata, "include_request_md", false, "Whether to include request metadata in the report: this defaults to false since a true value includes the auth token.")
-	flags.BoolVar(&uploadFeatures, "upload_features", false, "Whether to upload features to Chalk.")
-	flags.StringVar(&uploadFeaturesFile, "upload_features_file", "", "File containing features to upload to Chalk.")
+	flags.DurationVarP(&benchmarkDuration, "duration", "d", time.Duration(60.0*float64(time.Second)), "Amount of time to run the ramp up for the benchmark (only applies if the RPS>20)")
+	flags.DurationVar(&rampDuration, "ramp_duration", time.Duration(10.0*float64(time.Second)), "Amount of time to run the benchmark (for example, '60s').")
 	flags.UintVar(&numConnections, "num_connections", 16, "Number of connections for requests.")
 	flags.UintVar(&concurrency, "concurrency", 16, "Concurrency for requests.")
 	flags.DurationVar(&timeout, "timeout", 20*time.Second, "Timeout for requests.")
+
+	// environment & client parameters
+	flags.StringVar(&environment, "environment", "", "Environment for the client.")
+	flags.StringVarP(&clientId, "client_id", "c", os.Getenv("CHALK_CLIENT_ID"), "client_id for your environment.")
+	flags.StringVarP(&clientSecret, "client_secret", "s", os.Getenv("CHALK_CLIENT_SECRET"), "client_secret for your environment.")
+
+	// input & output parameters
+	flags.StringToStringVar(&input, "in", nil, "input features to the online query, for instance: 'user.id=xwdw,user.name'John'. This flag will try to convert inputs to the right type. If you need to explicitly pass in a number or string, use the `in-num` or `in-str` flag.")
+	flags.StringToStringVar(&inputStr, "in_str", nil, "string input features to the online query, for instance: 'user.id=xwdw,user.name'John'.")
+	flags.StringToInt64Var(&inputNum, "in_num", nil, "numeric input features to the online query, for instance 'user.id=1,user.age=28'")
+	flags.BoolVar(&uploadFeatures, "upload_features", false, "Whether to upload features to Chalk.")
+	flags.StringVar(&uploadFeaturesFile, "upload_features_file", "", "File containing features to upload to Chalk.")
+	flags.StringArrayVar(&output, "out", nil, "target output features for the online query, for instance: 'user.is_fraud'.")
+	flags.StringVar(&outputFile, "output_file", "result.html", "Output filename for the saved report.")
+	flags.StringVar(&queryName, "query_name", "", "Query name for the benchmark query.")
+
+	// planner options
+	flags.BoolVar(&useNativeSql, "native_sql", false, "Whether to use the `use_native_sql_operators` planner option.")
+	flags.BoolVar(&staticUnderscoreExprs, "static_underscore", true, "Whether to use the `static_underscore_expressions` planner option.")
+
+	// other parameters
+	flags.BoolVar(&includeRequestMetadata, "include_request_md", false, "Whether to include request metadata in the report: this defaults to false since a true value includes the auth token.")
 	flags.BoolVar(&verbose, "verbose", false, "Whether to print verbose output.")
 }
