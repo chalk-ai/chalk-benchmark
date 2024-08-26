@@ -87,7 +87,7 @@ func pbar(t time.Duration, rampDuration time.Duration, wg *sync.WaitGroup) {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "chalk-benchmark --client-id <client_id> --client-secret <client_secret> --rps <rps> --duration_seconds <duration_seconds> --in user.id=1 --out user.email",
+	Use:   "chalk-benchmark --client-id <client_id> --client-secret <client_secret> --rps <rps> --duration-seconds <duration_seconds> --in user.id=1 --out user.email",
 	Short: "Run load test for chalk grpc",
 	Long:  `This should be run on a node close to the client's sandbox`,
 	Run: func(cmd *cobra.Command, args []string) {
