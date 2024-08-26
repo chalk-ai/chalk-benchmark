@@ -389,18 +389,18 @@ func normalizeFlagNames(f *pflag.FlagSet, name string) pflag.NormalizedName {
 // benchmark parameters
 var test bool
 var rps uint
-var concurrency uint
-var timeout time.Duration
-var outputFile string
 var benchmarkDuration time.Duration
 var rampDuration time.Duration
 var numConnections uint
+var concurrency uint
+var timeout time.Duration
+var outputFile string
 
 // environment & client parameters
 var host string
+var environment string
 var clientId string
 var clientSecret string
-var environment string
 
 // input & output parameters
 var input map[string]string
@@ -427,14 +427,15 @@ func init() {
 	// benchmark parameters
 	flags.BoolVarP(&test, "test", "t", false, "Ping the GRPC engine to make sure the benchmarking tool can reach the engine.")
 	flags.UintVarP(&rps, "rps", "r", 1, "Number of concurrent requests.")
-	flags.StringVar(&host, "host", "https://api.chalk.ai", "API server url—in host cases, this default will work.")
 	flags.DurationVarP(&benchmarkDuration, "duration", "d", time.Duration(60.0*float64(time.Second)), "Amount of time to run the ramp up for the benchmark (only applies if the RPS>20)")
 	flags.DurationVar(&rampDuration, "ramp_duration", time.Duration(10.0*float64(time.Second)), "Amount of time to run the benchmark (for example, '60s').")
 	flags.UintVar(&numConnections, "num_connections", 16, "Number of connections for requests.")
 	flags.UintVar(&concurrency, "concurrency", 16, "Concurrency for requests.")
 	flags.DurationVar(&timeout, "timeout", 20*time.Second, "Timeout for requests.")
+	flags.StringVar(&outputFile, "output_file", "result.html", "Output filename for the saved report.")
 
 	// environment & client parameters
+	flags.StringVar(&host, "host", "https://api.chalk.ai", "API server url—in host cases, this default will work.")
 	flags.StringVar(&environment, "environment", "", "Environment for the client.")
 	flags.StringVarP(&clientId, "client_id", "c", os.Getenv("CHALK_CLIENT_ID"), "client_id for your environment.")
 	flags.StringVarP(&clientSecret, "client_secret", "s", os.Getenv("CHALK_CLIENT_SECRET"), "client_secret for your environment.")
@@ -443,10 +444,9 @@ func init() {
 	flags.StringToStringVar(&input, "in", nil, "input features to the online query, for instance: 'user.id=xwdw,user.name'John'. This flag will try to convert inputs to the right type. If you need to explicitly pass in a number or string, use the `in-num` or `in-str` flag.")
 	flags.StringToStringVar(&inputStr, "in_str", nil, "string input features to the online query, for instance: 'user.id=xwdw,user.name'John'.")
 	flags.StringToInt64Var(&inputNum, "in_num", nil, "numeric input features to the online query, for instance 'user.id=1,user.age=28'")
+	flags.StringArrayVar(&output, "out", nil, "target output features for the online query, for instance: 'user.is_fraud'.")
 	flags.BoolVar(&uploadFeatures, "upload_features", false, "Whether to upload features to Chalk.")
 	flags.StringVar(&uploadFeaturesFile, "upload_features_file", "", "File containing features to upload to Chalk.")
-	flags.StringArrayVar(&output, "out", nil, "target output features for the online query, for instance: 'user.is_fraud'.")
-	flags.StringVar(&outputFile, "output_file", "result.html", "Output filename for the saved report.")
 	flags.StringVar(&queryName, "query_name", "", "Query name for the benchmark query.")
 
 	// planner options
