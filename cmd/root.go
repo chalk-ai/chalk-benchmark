@@ -91,6 +91,11 @@ var rootCmd = &cobra.Command{
 	Short: "Run load test for chalk grpc",
 	Long:  `This should be run on a node close to the client's sandbox`,
 	Run: func(cmd *cobra.Command, args []string) {
+		rampDurationSeconds := uint(math.Floor(float64(rampDuration / time.Second)))
+		if rampDurationSeconds <= 1 {
+			fmt.Print("Ramp duration must be greater than 1 second\n")
+			os.Exit(1)
+		}
 		client, err := chalk.NewClient(&chalk.ClientConfig{
 			ApiServer:     host,
 			ClientId:      clientId,
@@ -241,7 +246,10 @@ var rootCmd = &cobra.Command{
 			var queryContext commonv1.OnlineQueryContext
 
 			if queryName != "" {
-				queryContext = commonv1.OnlineQueryContext{QueryName: &queryName}
+				queryContext = commonv1.OnlineQueryContext{
+					QueryName: &queryName,
+					Tags:      tags,
+				}
 			}
 			oqr := commonv1.OnlineQueryRequest{
 				Inputs:  inputsProcessed,
@@ -280,8 +288,6 @@ var rootCmd = &cobra.Command{
 			}
 
 			if rps > MinRPSForRamp {
-				rampDurationSeconds := uint(math.Floor(float64(rampDuration / time.Second)))
-
 				step := uint(math.Floor(float64(rps) / float64(rampDurationSeconds)))
 
 				loadEnd := step * rampDurationSeconds
@@ -316,6 +322,7 @@ var rootCmd = &cobra.Command{
 				totalRequests += numWarmUpQueries
 
 			} else {
+				fmt.Printf("Running without ramp up since requested RPS is less than the minimum rps for ramp up: %d.\n", MinRPSForRamp)
 				rampDuration = time.Duration(0)
 			}
 			wg.Add(1)
@@ -425,6 +432,7 @@ var input map[string]string
 var inputStr map[string]string
 var inputNum map[string]int64
 var output []string
+var tags []string
 var uploadFeatures bool
 var uploadFeaturesFile string
 var queryName string
@@ -444,11 +452,11 @@ func init() {
 
 	// benchmark parameters
 	flags.BoolVarP(&test, "test", "t", false, "Ping the GRPC engine to make sure the benchmarking tool can reach the engine.")
-	flags.UintVarP(&rps, "rps", "r", 1, "Number of concurrent requests.")
+	flags.UintVarP(&rps, "rps", "r", 1, "Number of requests to execute per second against the engine.")
 	flags.DurationVarP(&benchmarkDuration, "duration", "d", time.Duration(60.0*float64(time.Second)), "Amount of time to run the ramp up for the benchmark (only applies if the RPS>20)")
 	flags.DurationVar(&rampDuration, "ramp_duration", time.Duration(10.0*float64(time.Second)), "Amount of time to run the benchmark (for example, '60s').")
-	flags.UintVar(&numConnections, "num_connections", 16, "Number of connections for requests.")
-	flags.UintVar(&concurrency, "concurrency", 16, "Concurrency for requests.")
+	flags.UintVar(&numConnections, "num_connections", 16, "The number of gRPC connections used by the tool.")
+	flags.UintVar(&concurrency, "concurrency", 16, "Number of workers (concurrency) for requests.")
 	flags.DurationVar(&timeout, "timeout", 20*time.Second, "Timeout for requests.")
 	flags.StringVar(&outputFile, "output_file", "result.html", "Output filename for the saved report.")
 
@@ -463,6 +471,7 @@ func init() {
 	flags.StringToStringVar(&inputStr, "in_str", nil, "string input features to the online query, for instance: 'user.id=xwdw,user.name'John'.")
 	flags.StringToInt64Var(&inputNum, "in_num", nil, "numeric input features to the online query, for instance 'user.id=1,user.age=28'")
 	flags.StringArrayVar(&output, "out", nil, "target output features for the online query, for instance: 'user.is_fraud'.")
+	flags.StringArrayVar(&tags, "tag", nil, "Tags to add to the online query: e.g. '--tag test'.")
 	flags.BoolVar(&uploadFeatures, "upload_features", false, "Whether to upload features to Chalk.")
 	flags.StringVar(&uploadFeaturesFile, "upload_features_file", "", "File containing features to upload to Chalk.")
 	flags.StringVar(&queryName, "query_name", "", "Query name for the benchmark query.")
