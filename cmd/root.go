@@ -267,7 +267,7 @@ var rootCmd = &cobra.Command{
 				runner.WithRPS(rps),
 				runner.WithAsync(true),
 				runner.WithTotalRequests(totalRequests),
-				runner.WithConnections(16),
+				runner.WithConnections(numConnections),
 				runner.WithMetadata(map[string]string{
 					"authorization":           fmt.Sprintf("Bearer %s", tokenResult.AccessToken),
 					"x-chalk-env-id":          targetEnvironment,
@@ -275,7 +275,7 @@ var rootCmd = &cobra.Command{
 				}),
 				runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{filepath.Join(tmpd, "protos")}),
 				runner.WithSkipTLSVerify(true),
-				runner.WithConcurrency(16),
+				runner.WithConcurrency(concurrency),
 				runner.WithBinaryData(binaryData),
 			}
 
