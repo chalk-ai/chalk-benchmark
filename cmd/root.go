@@ -103,7 +103,7 @@ var rootCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		tmpd := WriteEmbeddedDirToTmp()
+		// tmpd := WriteEmbeddedDirToTmp()
 		cd := CurDir()
 
 		var targetEnvironment string
@@ -146,7 +146,12 @@ var rootCmd = &cobra.Command{
 					"x-chalk-env-id":          targetEnvironment,
 					"x-chalk-deployment-type": "engine-grpc",
 				}),
-				runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{filepath.Join(tmpd, "protos")}),
+				runner.WithReflectionMetadata(map[string]string{
+					"authorization":           fmt.Sprintf("Bearer %s", tokenResult.AccessToken),
+					"x-chalk-env-id":          targetEnvironment,
+					"x-chalk-deployment-type": "engine-grpc",
+				}),
+				// runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{filepath.Join(tmpd, "protos")}),
 				runner.WithSkipTLSVerify(true),
 				runner.WithBinaryData(pingRequest),
 			)
@@ -192,7 +197,12 @@ var rootCmd = &cobra.Command{
 					"x-chalk-env-id":          targetEnvironment,
 					"x-chalk-deployment-type": "engine-grpc",
 				}),
-				runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{filepath.Join(tmpd, "protos")}),
+				runner.WithReflectionMetadata(map[string]string{
+					"authorization":           fmt.Sprintf("Bearer %s", tokenResult.AccessToken),
+					"x-chalk-env-id":          targetEnvironment,
+					"x-chalk-deployment-type": "engine-grpc",
+				}),
+				// runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{filepath.Join(tmpd, "protos")}),
 				runner.WithSkipTLSVerify(true),
 				runner.WithConcurrency(16),
 				runner.WithBinaryData(binaryData),
@@ -273,7 +283,12 @@ var rootCmd = &cobra.Command{
 					"x-chalk-env-id":          targetEnvironment,
 					"x-chalk-deployment-type": "engine-grpc",
 				}),
-				runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{filepath.Join(tmpd, "protos")}),
+				runner.WithReflectionMetadata(map[string]string{
+					"authorization":           fmt.Sprintf("Bearer %s", tokenResult.AccessToken),
+					"x-chalk-env-id":          targetEnvironment,
+					"x-chalk-deployment-type": "engine-grpc",
+				}),
+				// runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{filepath.Join(tmpd, "protos")}),
 				runner.WithSkipTLSVerify(true),
 				runner.WithConcurrency(16),
 				runner.WithBinaryData(binaryData),
@@ -305,7 +320,12 @@ var rootCmd = &cobra.Command{
 							"x-chalk-env-id":          targetEnvironment,
 							"x-chalk-deployment-type": "engine-grpc",
 						}),
-						runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{filepath.Join(tmpd, "protos")}),
+						runner.WithReflectionMetadata(map[string]string{
+							"authorization":           fmt.Sprintf("Bearer %s", tokenResult.AccessToken),
+							"x-chalk-env-id":          targetEnvironment,
+							"x-chalk-deployment-type": "engine-grpc",
+						}),
+						// runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{filepath.Join(tmpd, "protos")}),
 						runner.WithSkipTLSVerify(true),
 						runner.WithConcurrency(concurrency),
 						runner.WithBinaryData(binaryData),
