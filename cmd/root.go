@@ -118,6 +118,8 @@ var rootCmd = &cobra.Command{
 			runner.WithTimeout(timeout),
 			runner.WithAsync(true),
 			runner.WithConcurrency(concurrency),
+			runner.WithInsecure(insecureQueryHost),
+			runner.WithSkipTLSVerify(insecureQueryHost),
 		}
 
 		var result *runner.Report
@@ -134,7 +136,6 @@ var rootCmd = &cobra.Command{
 				rps,
 				benchmarkDuration,
 				rampDuration,
-				wg
 			)
 		case "query_file":
 			onlineQueryContext := ParseOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, tags)
@@ -285,8 +286,9 @@ var rootCmd = &cobra.Command{
 					"x-chalk-env-id":          targetEnvironment,
 					"x-chalk-deployment-type": "engine-grpc",
 				}),
-				runner.WithSkipTLSVerify(true),
-				runner.WithConcurrency(concurrency),
+				runner.WithSkipTLSVerify(insecureQueryHost),
+				runner.WithInsecure(insecureQueryHost),
+				runner.WithConcurrency(16),
 				runner.WithBinaryData(binaryData),
 			}
 			additionalArgs := []runner.Option{runner.WithTimeout(timeout)}
@@ -392,6 +394,7 @@ var outputFilename string
 
 // environment & client parameters
 var host string
+var insecureQueryHost bool
 var queryHost string
 var environment string
 var clientId string
@@ -437,6 +440,7 @@ func init() {
 	// environment & client parameters
 	flags.StringVar(&host, "host", "https://api.chalk.ai", "API server url—in host cases, this default will work.")
 	flags.StringVar(&queryHost, "query_host", "", "query server url—in host cases, this default will work.")
+	flags.BoolVar(&insecureQueryHost, "insecure_query_host", false, "whether to run the client without TLS—can be useful when making requests directly to the engine.")
 	flags.StringVar(&environment, "environment", "", "Environment for the client.")
 	flags.StringVarP(&clientId, "client_id", "c", os.Getenv("CHALK_CLIENT_ID"), "client_id for your environment.")
 	flags.StringVarP(&clientSecret, "client_secret", "s", os.Getenv("CHALK_CLIENT_SECRET"), "client_secret for your environment.")
