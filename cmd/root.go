@@ -164,7 +164,8 @@ var rootCmd = &cobra.Command{
 					"x-chalk-env-id":          targetEnvironment,
 					"x-chalk-deployment-type": "engine-grpc",
 				}),
-				runner.WithSkipTLSVerify(true),
+				runner.WithInsecure(insecureQueryHost),
+				runner.WithSkipTLSVerify(insecureQueryHost),
 				runner.WithBinaryData(pingRequest),
 			)
 			if err != nil {
@@ -214,7 +215,8 @@ var rootCmd = &cobra.Command{
 					"x-chalk-env-id":          targetEnvironment,
 					"x-chalk-deployment-type": "engine-grpc",
 				}),
-				runner.WithSkipTLSVerify(true),
+				runner.WithSkipTLSVerify(insecureQueryHost),
+				runner.WithInsecure(insecureQueryHost),
 				runner.WithConcurrency(16),
 				runner.WithBinaryData(binaryData),
 			)
@@ -299,7 +301,8 @@ var rootCmd = &cobra.Command{
 					"x-chalk-env-id":          targetEnvironment,
 					"x-chalk-deployment-type": "engine-grpc",
 				}),
-				runner.WithSkipTLSVerify(true),
+				runner.WithSkipTLSVerify(insecureQueryHost),
+				runner.WithInsecure(insecureQueryHost),
 				runner.WithConcurrency(16),
 				runner.WithBinaryData(binaryData),
 			}
@@ -325,6 +328,7 @@ var rootCmd = &cobra.Command{
 						runner.WithRPS(rps),
 						runner.WithAsync(true),
 						runner.WithConnections(numConnections),
+						runner.WithInsecure(insecureQueryHost),
 						runner.WithMetadata(map[string]string{
 							"authorization":           fmt.Sprintf("Bearer %s", accessToken),
 							"x-chalk-env-id":          targetEnvironment,
@@ -335,7 +339,8 @@ var rootCmd = &cobra.Command{
 							"x-chalk-env-id":          targetEnvironment,
 							"x-chalk-deployment-type": "engine-grpc",
 						}),
-						runner.WithSkipTLSVerify(true),
+						runner.WithInsecure(insecureQueryHost),
+						runner.WithSkipTLSVerify(insecureQueryHost),
 						runner.WithConcurrency(concurrency),
 						runner.WithBinaryData(binaryData),
 						runner.WithTimeout(timeout),
@@ -446,6 +451,7 @@ var outputFile string
 
 // environment & client parameters
 var host string
+var insecureQueryHost bool
 var queryHost string
 var environment string
 var clientId string
@@ -488,6 +494,7 @@ func init() {
 	// environment & client parameters
 	flags.StringVar(&host, "host", "https://api.chalk.ai", "API server url—in host cases, this default will work.")
 	flags.StringVar(&queryHost, "query_host", "", "query server url—in host cases, this default will work.")
+	flags.BoolVar(&insecureQueryHost, "insecure_query_host", false, "whether to run the client without TLS—can be useful when making requests directly to the engine.")
 	flags.StringVar(&environment, "environment", "", "Environment for the client.")
 	flags.StringVarP(&clientId, "client_id", "c", os.Getenv("CHALK_CLIENT_ID"), "client_id for your environment.")
 	flags.StringVarP(&clientSecret, "client_secret", "s", os.Getenv("CHALK_CLIENT_SECRET"), "client_secret for your environment.")
