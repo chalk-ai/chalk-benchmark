@@ -164,7 +164,7 @@ var rootCmd = &cobra.Command{
 					"x-chalk-env-id":          targetEnvironment,
 					"x-chalk-deployment-type": "engine-grpc",
 				}),
-        runner.WithInsecure(insecureQueryHost),
+				runner.WithInsecure(insecureQueryHost),
 				runner.WithSkipTLSVerify(insecureQueryHost),
 				runner.WithBinaryData(pingRequest),
 			)
@@ -216,7 +216,7 @@ var rootCmd = &cobra.Command{
 					"x-chalk-deployment-type": "engine-grpc",
 				}),
 				runner.WithSkipTLSVerify(insecureQueryHost),
-        runner.WithInsecure(insecureQueryHost),
+				runner.WithInsecure(insecureQueryHost),
 				runner.WithConcurrency(16),
 				runner.WithBinaryData(binaryData),
 			)
@@ -302,7 +302,7 @@ var rootCmd = &cobra.Command{
 					"x-chalk-deployment-type": "engine-grpc",
 				}),
 				runner.WithSkipTLSVerify(insecureQueryHost),
-        runner.WithInsecure(insecureQueryHost),
+				runner.WithInsecure(insecureQueryHost),
 				runner.WithConcurrency(16),
 				runner.WithBinaryData(binaryData),
 			}
@@ -328,7 +328,7 @@ var rootCmd = &cobra.Command{
 						runner.WithRPS(rps),
 						runner.WithAsync(true),
 						runner.WithConnections(numConnections),
-            runner.WithInsecure(insecureQueryHost),
+						runner.WithInsecure(insecureQueryHost),
 						runner.WithMetadata(map[string]string{
 							"authorization":           fmt.Sprintf("Bearer %s", accessToken),
 							"x-chalk-env-id":          targetEnvironment,
@@ -339,7 +339,7 @@ var rootCmd = &cobra.Command{
 							"x-chalk-env-id":          targetEnvironment,
 							"x-chalk-deployment-type": "engine-grpc",
 						}),
-				    runner.WithInsecure(insecureQueryHost),
+						runner.WithInsecure(insecureQueryHost),
 						runner.WithSkipTLSVerify(insecureQueryHost),
 						runner.WithConcurrency(concurrency),
 						runner.WithBinaryData(binaryData),
