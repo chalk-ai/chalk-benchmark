@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/apache/arrow/go/v16/arrow/memory"
+	"github.com/samber/lo"
 	"github.com/spf13/pflag"
 	"io"
 	"math"
@@ -138,7 +139,7 @@ var rootCmd = &cobra.Command{
 			}
 			result, err = runner.Run(
 				strings.TrimPrefix(enginev1connect.QueryServicePingProcedure, "/"),
-				grpcHost,
+				lo.Ternary(queryHost == "", grpcHost, queryHost),
 				runner.WithRPS(1),
 				runner.WithTotalRequests(1),
 				runner.WithMetadata(map[string]string{
@@ -186,7 +187,7 @@ var rootCmd = &cobra.Command{
 			}
 			result, err = runner.Run(
 				strings.TrimPrefix(enginev1connect.QueryServiceUploadFeaturesBulkProcedure, "/"),
-				grpcHost,
+				lo.Ternary(queryHost == "", grpcHost, queryHost),
 				runner.WithRPS(rps),
 				runner.WithAsync(true),
 				runner.WithTotalRequests(1000),
@@ -339,7 +340,7 @@ var rootCmd = &cobra.Command{
 
 			result, err = runner.Run(
 				strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryProcedure, "/"),
-				grpcHost,
+				lo.Ternary(queryHost == "", grpcHost, queryHost),
 				runnerOptions...,
 			)
 			if err != nil {
@@ -432,6 +433,7 @@ var outputFile string
 
 // environment & client parameters
 var host string
+var queryHost string
 var environment string
 var clientId string
 var clientSecret string
@@ -470,6 +472,7 @@ func init() {
 
 	// environment & client parameters
 	flags.StringVar(&host, "host", "https://api.chalk.ai", "API server url—in host cases, this default will work.")
+	flags.StringVar(&queryHost, "query_host", "", "query server url—in host cases, this default will work.")
 	flags.StringVar(&environment, "environment", "", "Environment for the client.")
 	flags.StringVarP(&clientId, "client_id", "c", os.Getenv("CHALK_CLIENT_ID"), "client_id for your environment.")
 	flags.StringVarP(&clientSecret, "client_secret", "s", os.Getenv("CHALK_CLIENT_SECRET"), "client_secret for your environment.")
