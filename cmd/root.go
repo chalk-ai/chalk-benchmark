@@ -92,41 +92,53 @@ var rootCmd = &cobra.Command{
 	Short: "Run load test for chalk grpc",
 	Long:  `This should be run on a node close to the client's sandbox`,
 	Run: func(cmd *cobra.Command, args []string) {
-		client, err := chalk.NewClient(&chalk.ClientConfig{
-			ApiServer:     host,
-			ClientId:      clientId,
-			ClientSecret:  clientSecret,
-			UseGrpc:       true,
-			EnvironmentId: environment,
-		})
-		if err != nil {
-			fmt.Printf("Failed to create client with error: %s\n", err)
-			os.Exit(1)
-		}
-
-		// tmpd := WriteEmbeddedDirToTmp()
-		cd := CurDir()
-
 		var targetEnvironment string
-		tokenResult, err := client.GetToken()
-		if err != nil {
-			fmt.Printf("Failed to get token with error: %s\n", err)
-			os.Exit(1)
-		}
-		if tokenResult.PrimaryEnvironment == "" && environment == "" {
-			fmt.Printf("Failed to find target environment for benchmark. If you are using your user token instead of a service token, pass the environment id in explicitly using the `--environment` flag\n")
-			os.Exit(1)
-		} else if environment != "" && tokenResult.PrimaryEnvironment == "" {
+		var grpcHost string
+		var accessToken string
+
+		if token != "" {
+			if environment == "" || queryHost == "" {
+				fmt.Println("When authenticating directly with a token, the environment and query-host must be explicitly provided please provide an environment with the `--environment` flag and a query host with the `--query-host` flag")
+				os.Exit(1)
+			}
 			targetEnvironment = environment
-		} else if tokenResult.PrimaryEnvironment != "" && environment == "" {
-			targetEnvironment = tokenResult.PrimaryEnvironment
-		} else if environment == tokenResult.PrimaryEnvironment {
-			targetEnvironment = environment
+			grpcHost = strings.TrimPrefix(strings.TrimPrefix(queryHost, "https://"), "http://")
+			accessToken = token
 		} else {
-			fmt.Printf("Service token environment '%s' does not match the provided environment '%s'\n", tokenResult.PrimaryEnvironment, environment)
-			os.Exit(1)
+			client, err := chalk.NewClient(&chalk.ClientConfig{
+				ApiServer:     host,
+				ClientId:      clientId,
+				ClientSecret:  clientSecret,
+				UseGrpc:       true,
+				EnvironmentId: environment,
+			})
+			if err != nil {
+				fmt.Printf("Failed to create client with error: %s\n", err)
+				os.Exit(1)
+			}
+
+			tokenResult, err := client.GetToken()
+
+			if err != nil {
+				fmt.Printf("Failed to get token with error: %s\n", err)
+				os.Exit(1)
+			}
+			if tokenResult.PrimaryEnvironment == "" && environment == "" {
+				fmt.Printf("Failed to find target environment for benchmark. If you are using your user token instead of a service token, pass the environment id in explicitly using the `--environment` flag\n")
+				os.Exit(1)
+			} else if environment != "" && tokenResult.PrimaryEnvironment == "" {
+				targetEnvironment = environment
+			} else if tokenResult.PrimaryEnvironment != "" && environment == "" {
+				targetEnvironment = tokenResult.PrimaryEnvironment
+			} else if environment == tokenResult.PrimaryEnvironment {
+				targetEnvironment = environment
+			} else {
+				fmt.Printf("Service token environment '%s' does not match the provided environment '%s'\n", tokenResult.PrimaryEnvironment, environment)
+				os.Exit(1)
+			}
+			grpcHost = strings.TrimPrefix(strings.TrimPrefix(tokenResult.Engines[targetEnvironment], "https://"), "http://")
+			accessToken = tokenResult.AccessToken
 		}
-		grpcHost := strings.TrimPrefix(strings.TrimPrefix(tokenResult.Engines[targetEnvironment], "https://"), "http://")
 
 		var result *runner.Report
 		var wg sync.WaitGroup
@@ -143,12 +155,12 @@ var rootCmd = &cobra.Command{
 				runner.WithRPS(1),
 				runner.WithTotalRequests(1),
 				runner.WithMetadata(map[string]string{
-					"authorization":           fmt.Sprintf("Bearer %s", tokenResult.AccessToken),
+					"authorization":           fmt.Sprintf("Bearer %s", accessToken),
 					"x-chalk-env-id":          targetEnvironment,
 					"x-chalk-deployment-type": "engine-grpc",
 				}),
 				runner.WithReflectionMetadata(map[string]string{
-					"authorization":           fmt.Sprintf("Bearer %s", tokenResult.AccessToken),
+					"authorization":           fmt.Sprintf("Bearer %s", accessToken),
 					"x-chalk-env-id":          targetEnvironment,
 					"x-chalk-deployment-type": "engine-grpc",
 				}),
@@ -193,12 +205,12 @@ var rootCmd = &cobra.Command{
 				runner.WithTotalRequests(1000),
 				runner.WithConnections(16),
 				runner.WithMetadata(map[string]string{
-					"authorization":           fmt.Sprintf("Bearer %s", tokenResult.AccessToken),
+					"authorization":           fmt.Sprintf("Bearer %s", accessToken),
 					"x-chalk-env-id":          targetEnvironment,
 					"x-chalk-deployment-type": "engine-grpc",
 				}),
 				runner.WithReflectionMetadata(map[string]string{
-					"authorization":           fmt.Sprintf("Bearer %s", tokenResult.AccessToken),
+					"authorization":           fmt.Sprintf("Bearer %s", accessToken),
 					"x-chalk-env-id":          targetEnvironment,
 					"x-chalk-deployment-type": "engine-grpc",
 				}),
@@ -278,12 +290,12 @@ var rootCmd = &cobra.Command{
 				runner.WithTotalRequests(totalRequests),
 				runner.WithConnections(16),
 				runner.WithMetadata(map[string]string{
-					"authorization":           fmt.Sprintf("Bearer %s", tokenResult.AccessToken),
+					"authorization":           fmt.Sprintf("Bearer %s", accessToken),
 					"x-chalk-env-id":          targetEnvironment,
 					"x-chalk-deployment-type": "engine-grpc",
 				}),
 				runner.WithReflectionMetadata(map[string]string{
-					"authorization":           fmt.Sprintf("Bearer %s", tokenResult.AccessToken),
+					"authorization":           fmt.Sprintf("Bearer %s", accessToken),
 					"x-chalk-env-id":          targetEnvironment,
 					"x-chalk-deployment-type": "engine-grpc",
 				}),
@@ -314,12 +326,12 @@ var rootCmd = &cobra.Command{
 						runner.WithAsync(true),
 						runner.WithConnections(numConnections),
 						runner.WithMetadata(map[string]string{
-							"authorization":           fmt.Sprintf("Bearer %s", tokenResult.AccessToken),
+							"authorization":           fmt.Sprintf("Bearer %s", accessToken),
 							"x-chalk-env-id":          targetEnvironment,
 							"x-chalk-deployment-type": "engine-grpc",
 						}),
 						runner.WithReflectionMetadata(map[string]string{
-							"authorization":           fmt.Sprintf("Bearer %s", tokenResult.AccessToken),
+							"authorization":           fmt.Sprintf("Bearer %s", accessToken),
 							"x-chalk-env-id":          targetEnvironment,
 							"x-chalk-deployment-type": "engine-grpc",
 						}),
@@ -357,12 +369,13 @@ var rootCmd = &cobra.Command{
 			Report: result,
 		}
 
-		err = p.Print("summary")
+		err := p.Print("summary")
 		if err != nil {
 			fmt.Printf("Failed to print report with error: %s\n", err)
 			os.Exit(1)
 		}
 
+		cd := CurDir()
 		reportFile := filepath.Join(cd, fmt.Sprintf("%s.html", strings.TrimSuffix(outputFile, ".html")))
 		outputFile, err := os.OpenFile(reportFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0660)
 		if err != nil {
@@ -446,6 +459,7 @@ var output []string
 var uploadFeatures bool
 var uploadFeaturesFile string
 var queryName string
+var token string
 
 // planner options
 var useNativeSql bool
@@ -469,6 +483,7 @@ func init() {
 	flags.UintVar(&concurrency, "concurrency", 16, "Concurrency for requests.")
 	flags.DurationVar(&timeout, "timeout", 20*time.Second, "Timeout for requests.")
 	flags.StringVar(&outputFile, "output_file", "result.html", "Output filename for the saved report.")
+	flags.StringVar(&token, "token", os.Getenv("CHALK_BENCHMARK_TOKEN"), "jwt to use for the request—if this is provided the client_id and client_secret will be ignored.")
 
 	// environment & client parameters
 	flags.StringVar(&host, "host", "https://api.chalk.ai", "API server url—in host cases, this default will work.")
