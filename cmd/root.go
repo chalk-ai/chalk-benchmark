@@ -101,15 +101,16 @@ var rootCmd = &cobra.Command{
 		// Writes embedded protos to tmp directory
 		tmpd := WriteEmbeddedDirToTmp()
 		cd := CurDir()
+    authHeaders := map[string]string{
+        "authorization":           fmt.Sprintf("Bearer %s", accessToken),
+        "x-chalk-env-id":          targetEnvironment,
+        "x-chalk-deployment-type": "engine-grpc",
+    }
 
-		authHeaders := []runner.Option{
+		authHeadersConfig := []runner.Option{
 			runner.WithSkipTLSVerify(true),
-			runner.WithMetadata(map[string]string{
-				"authorization":           fmt.Sprintf("Bearer %s", accessToken),
-				"x-chalk-env-id":          environment,
-				"x-chalk-deployment-type": "engine-grpc",
-			}),
-			runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{filepath.Join(tmpd, "protos")}),
+			runner.WithMetadata(authHeaders),
+			runner.WithReflectionMetadata(authHeaders),
 		}
 
 		queryHeaders := []runner.Option{
@@ -129,12 +130,35 @@ var rootCmd = &cobra.Command{
 			result, err := Ping(grpcHost, authHeaders)
 		case "upload":
 			result, err := uploadFeaturesFile
-
 		}
 		if err != nil {
 			fmt.Printf("Failed to run request with err: %s\n", err)
 			os.Exit(1)
 		}
+		if test {
+			pingRequest, err := proto.Marshal(&enginev1.PingRequest{Num: 10})
+			if err != nil {
+				fmt.Printf("Failed to marshal ping request with err: %s\n", err)
+				os.Exit(1)
+			}
+			result, err = runner.Run(
+				strings.TrimPrefix(enginev1connect.QueryServicePingProcedure, "/"),
+        grpcHost,
+				slices.Concat(
+					authHeaders,
+					[]runner.Option{
+				    runner.WithRPS(1),
+				    runner.WithTotalRequests(1),
+				    runner.WithBinaryData(pingRequest),
+          },
+			  ),
+      )
+			if err != nil {
+				fmt.Printf("Failed to run Ping request with err: %s\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("Successfully pinged GRPC Engine\n")
+			os.Exit(0)
 
 		if uploadFeatures {
 			file, err := os.Open(uploadFeaturesFile)
@@ -246,11 +270,15 @@ var rootCmd = &cobra.Command{
 				runner.WithTotalRequests(totalRequests),
 				runner.WithConnections(numConnections),
 				runner.WithMetadata(map[string]string{
-					"authorization":           fmt.Sprintf("Bearer %s", tokenResult.AccessToken),
+					"authorization":           fmt.Sprintf("Bearer %s", accessToken),
 					"x-chalk-env-id":          targetEnvironment,
 					"x-chalk-deployment-type": "engine-grpc",
 				}),
-				runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{filepath.Join(tmpd, "protos")}),
+				runner.WithReflectionMetadata(map[string]string{
+					"authorization":           fmt.Sprintf("Bearer %s", accessToken),
+					"x-chalk-env-id":          targetEnvironment,
+					"x-chalk-deployment-type": "engine-grpc",
+				}),
 				runner.WithSkipTLSVerify(true),
 				runner.WithConcurrency(concurrency),
 				runner.WithBinaryData(binaryData),
@@ -278,11 +306,15 @@ var rootCmd = &cobra.Command{
 						runner.WithAsync(true),
 						runner.WithConnections(numConnections),
 						runner.WithMetadata(map[string]string{
-							"authorization":           fmt.Sprintf("Bearer %s", tokenResult.AccessToken),
+							"authorization":           fmt.Sprintf("Bearer %s", accessToken),
 							"x-chalk-env-id":          targetEnvironment,
 							"x-chalk-deployment-type": "engine-grpc",
 						}),
-						runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{filepath.Join(tmpd, "protos")}),
+						runner.WithReflectionMetadata(map[string]string{
+							"authorization":           fmt.Sprintf("Bearer %s", accessToken),
+							"x-chalk-env-id":          targetEnvironment,
+							"x-chalk-deployment-type": "engine-grpc",
+						}),
 						runner.WithSkipTLSVerify(true),
 						runner.WithConcurrency(concurrency),
 						runner.WithBinaryData(binaryData),
@@ -301,7 +333,7 @@ var rootCmd = &cobra.Command{
 
 			result, err = runner.Run(
 				strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryProcedure, "/"),
-				grpcHost,
+				lo.Ternary(queryHost == "", grpcHost, queryHost),
 				runnerOptions...,
 			)
 			if err != nil {
@@ -318,12 +350,13 @@ var rootCmd = &cobra.Command{
 			Report: result,
 		}
 
-		err = p.Print("summary")
+		err := p.Print("summary")
 		if err != nil {
 			fmt.Printf("Failed to print report with error: %s\n", err)
 			os.Exit(1)
 		}
 
+		cd := CurDir()
 		reportFile := filepath.Join(cd, fmt.Sprintf("%s.html", strings.TrimSuffix(outputFile, ".html")))
 		outputFile, err := os.OpenFile(reportFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0660)
 		if err != nil {
@@ -394,6 +427,7 @@ var outputFile string
 
 // environment & client parameters
 var host string
+var queryHost string
 var environment string
 var clientId string
 var clientSecret string
@@ -407,6 +441,7 @@ var tags []string
 var uploadFeatures bool
 var uploadFeaturesFile string
 var queryName string
+var token string
 
 // planner options
 var useNativeSql bool
@@ -431,9 +466,11 @@ func init() {
 	flags.UintVar(&concurrency, "concurrency", 16, "Number of workers (concurrency) for requests.")
 	flags.DurationVar(&timeout, "timeout", 20*time.Second, "Timeout for requests.")
 	flags.StringVar(&outputFile, "output_file", "result.html", "Output filename for the saved report.")
+	flags.StringVar(&token, "token", os.Getenv("CHALK_BENCHMARK_TOKEN"), "jwt to use for the request—if this is provided the client_id and client_secret will be ignored.")
 
 	// environment & client parameters
 	flags.StringVar(&host, "host", "https://api.chalk.ai", "API server url—in host cases, this default will work.")
+	flags.StringVar(&queryHost, "query_host", "", "query server url—in host cases, this default will work.")
 	flags.StringVar(&environment, "environment", "", "Environment for the client.")
 	flags.StringVarP(&clientId, "client_id", "c", os.Getenv("CHALK_CLIENT_ID"), "client_id for your environment.")
 	flags.StringVarP(&clientSecret, "client_secret", "s", os.Getenv("CHALK_CLIENT_SECRET"), "client_secret for your environment.")
