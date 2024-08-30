@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"github.com/apache/arrow/go/v16/arrow/memory"
+	"github.com/samber/lo"
 	"github.com/spf13/pflag"
 	"io"
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,9 +18,7 @@ import (
 
 	parquetFile "github.com/apache/arrow/go/v16/parquet/file"
 	"github.com/apache/arrow/go/v16/parquet/pqarrow"
-	"github.com/chalk-ai/chalk-go"
 	commonv1 "github.com/chalk-ai/chalk-go/gen/chalk/common/v1"
-	enginev1 "github.com/chalk-ai/chalk-go/gen/chalk/engine/v1"
 	"github.com/chalk-ai/chalk-go/gen/chalk/engine/v1/enginev1connect"
 	"github.com/chalk-ai/ghz/printer"
 	"github.com/chalk-ai/ghz/runner"
@@ -96,73 +96,47 @@ var rootCmd = &cobra.Command{
 			fmt.Print("Ramp duration must be greater than 1 second\n")
 			os.Exit(1)
 		}
-		client, err := chalk.NewClient(&chalk.ClientConfig{
-			ApiServer:     host,
-			ClientId:      clientId,
-			ClientSecret:  clientSecret,
-			UseGrpc:       true,
-			EnvironmentId: environment,
-		})
-		if err != nil {
-			fmt.Printf("Failed to create client with error: %s\n", err)
-			os.Exit(1)
-		}
+		grpcHost, accessToken, targetEnvironment := AuthenticateUser(host, clientId, clientSecret, environment)
 
+		// Writes embedded protos to tmp directory
 		tmpd := WriteEmbeddedDirToTmp()
 		cd := CurDir()
 
-		var targetEnvironment string
-		tokenResult, err := client.GetToken()
-		if err != nil {
-			fmt.Printf("Failed to get token with error: %s\n", err)
-			os.Exit(1)
+		authHeaders := []runner.Option{
+			runner.WithSkipTLSVerify(true),
+			runner.WithMetadata(map[string]string{
+				"authorization":           fmt.Sprintf("Bearer %s", accessToken),
+				"x-chalk-env-id":          environment,
+				"x-chalk-deployment-type": "engine-grpc",
+			}),
+			runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{filepath.Join(tmpd, "protos")}),
 		}
-		if tokenResult.PrimaryEnvironment == "" && environment == "" {
-			fmt.Printf("Failed to find target environment for benchmark. If you are using your user token instead of a service token, pass the environment id in explicitly using the `--environment` flag\n")
-			os.Exit(1)
-		} else if environment != "" && tokenResult.PrimaryEnvironment == "" {
-			targetEnvironment = environment
-		} else if tokenResult.PrimaryEnvironment != "" && environment == "" {
-			targetEnvironment = tokenResult.PrimaryEnvironment
-		} else if environment == tokenResult.PrimaryEnvironment {
-			targetEnvironment = environment
-		} else {
-			fmt.Printf("Service token environment '%s' does not match the provided environment '%s'\n", tokenResult.PrimaryEnvironment, environment)
-			os.Exit(1)
+
+		queryHeaders := []runner.Option{
+			runner.WithRPS(rps),
+			runner.WithAsync(true),
+			runner.WithConnections(numConnections),
+			runner.WithTimeout(timeout),
+			runner.WithAsync(true),
+			runner.WithConcurrency(concurrency),
 		}
-		grpcHost := strings.TrimPrefix(strings.TrimPrefix(tokenResult.Engines[targetEnvironment], "https://"), "http://")
 
 		var result *runner.Report
+		var err error
 		var wg sync.WaitGroup
+		switch lo.Ternary(test, "test", lo.Ternary(uploadFeatures, "upload", "query")) {
+		case "test":
+			result, err := Ping(grpcHost, authHeaders)
+		case "upload":
+			result, err := uploadFeaturesFile
 
-		if test {
-			pingRequest, err := proto.Marshal(&enginev1.PingRequest{Num: 10})
-			if err != nil {
-				fmt.Printf("Failed to marshal ping request with err: %s\n", err)
-				os.Exit(1)
-			}
-			result, err = runner.Run(
-				strings.TrimPrefix(enginev1connect.QueryServicePingProcedure, "/"),
-				grpcHost,
-				runner.WithRPS(1),
-				runner.WithTotalRequests(1),
-				runner.WithMetadata(map[string]string{
-					"authorization":           fmt.Sprintf("Bearer %s", tokenResult.AccessToken),
-					"x-chalk-env-id":          targetEnvironment,
-					"x-chalk-deployment-type": "engine-grpc",
-				}),
-				runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{filepath.Join(tmpd, "protos")}),
-				runner.WithSkipTLSVerify(true),
-				runner.WithBinaryData(pingRequest),
-			)
-			if err != nil {
-				fmt.Printf("Failed to run Ping request with err: %s\n", err)
-				os.Exit(1)
-			}
-			fmt.Printf("Successfully pinged GRPC Engine\n")
-			os.Exit(0)
+		}
+		if err != nil {
+			fmt.Printf("Failed to run request with err: %s\n", err)
+			os.Exit(1)
+		}
 
-		} else if uploadFeatures {
+		if uploadFeatures {
 			file, err := os.Open(uploadFeaturesFile)
 			if err != nil {
 				fmt.Printf("Failed to open file with err: %s\n", err)
@@ -188,19 +162,14 @@ var rootCmd = &cobra.Command{
 			result, err = runner.Run(
 				strings.TrimPrefix(enginev1connect.QueryServiceUploadFeaturesBulkProcedure, "/"),
 				grpcHost,
-				runner.WithRPS(rps),
-				runner.WithAsync(true),
-				runner.WithTotalRequests(1000),
-				runner.WithConnections(16),
-				runner.WithMetadata(map[string]string{
-					"authorization":           fmt.Sprintf("Bearer %s", tokenResult.AccessToken),
-					"x-chalk-env-id":          targetEnvironment,
-					"x-chalk-deployment-type": "engine-grpc",
-				}),
-				runner.WithProtoFile("./chalk/engine/v1/query_server.proto", []string{filepath.Join(tmpd, "protos")}),
-				runner.WithSkipTLSVerify(true),
-				runner.WithConcurrency(16),
-				runner.WithBinaryData(binaryData),
+				slices.Concat(
+					authHeaders,
+					queryHeaders,
+					[]runner.Option{
+						runner.WithBinaryData(binaryData),
+						runner.WithTotalRequests(1000),
+					},
+				)...,
 			)
 			if err != nil {
 				fmt.Printf("Failed to run request with err: %s\n", err)
@@ -286,6 +255,8 @@ var rootCmd = &cobra.Command{
 				runner.WithConcurrency(concurrency),
 				runner.WithBinaryData(binaryData),
 			}
+			additionalArgs := []runner.Option{runner.WithTimeout(timeout)}
+			runnerOptions = append(runnerOptions, additionalArgs...)
 
 			if rps > MinRPSForRamp {
 				step := uint(math.Floor(float64(rps) / float64(rampDurationSeconds)))
@@ -444,6 +415,7 @@ var staticUnderscoreExprs bool
 // other parameters
 var includeRequestMetadata bool
 var verbose bool
+var noProgress bool
 
 func init() {
 	viper.AutomaticEnv()
@@ -483,4 +455,5 @@ func init() {
 	// other parameters
 	flags.BoolVar(&includeRequestMetadata, "include_request_md", false, "Whether to include request metadata in the report: this defaults to false since a true value includes the auth token.")
 	flags.BoolVar(&verbose, "verbose", false, "Whether to print verbose output.")
+	flags.BoolVar(&noProgress, "no-progress", false, "Whether to print verbose output.")
 }
