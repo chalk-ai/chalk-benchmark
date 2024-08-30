@@ -98,7 +98,7 @@ var rootCmd = &cobra.Command{
 
 		if token != "" {
 			if environment == "" || queryHost == "" {
-				fmt.Println("When authenticating directly with a token, the environment and query-host must be explicitly provided please provide an environment with the `--environment` flag and a query host with the `--query-host` flag")
+				fmt.Println("When authenticating directly with a token, the environment and query-host must be explicitly provided. Please provide an environment with the `--environment` flag and a query host with the `--query-host` flag.")
 				os.Exit(1)
 			}
 			targetEnvironment = environment
