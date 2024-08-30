@@ -502,7 +502,7 @@ func init() {
 	flags.StringVar(&queryName, "query_name", "", "Query name for the benchmark query.")
 
 	// planner options
-	flags.BoolVar(&useNativeSql, "native_sql", false, "Whether to use the `use_native_sql_operators` planner option.")
+	flags.BoolVar(&useNativeSql, "native_sql", true, "Whether to use the `use_native_sql_operators` planner option.")
 	flags.BoolVar(&staticUnderscoreExprs, "static_underscore", true, "Whether to use the `static_underscore_expressions` planner option.")
 
 	// other parameters
