@@ -32,8 +32,12 @@ import (
 	structpb "google.golang.org/protobuf/types/known/structpb"
 )
 
-const MinRPSForRamp = 20
 const DefaultLoadRampStart = 2
+
+type PlannerOptions struct {
+	UseNativeSql          bool
+	StaticUnderscoreExprs bool
+}
 
 func parseInputsToMap(rawInputs map[string]string, processedMap map[string]*structpb.Value) {
 	// Iterate over the original map and copy the key-value pairs
@@ -92,29 +96,23 @@ var rootCmd = &cobra.Command{
 	Long:  `This should be run on a node close to the client's sandbox`,
 	Run: func(cmd *cobra.Command, args []string) {
 		rampDurationSeconds := uint(math.Floor(float64(rampDuration / time.Second)))
-		if rampDurationSeconds <= 1 {
-			fmt.Print("Ramp duration must be greater than 1 second\n")
+		if rampDurationSeconds == 1 {
+			fmt.Print("Ramp duration must either be 0 or greater than 1 second\n")
 			os.Exit(1)
 		}
 		grpcHost, accessToken, targetEnvironment := AuthenticateUser(host, clientId, clientSecret, environment)
 
 		// Writes embedded protos to tmp directory
-		tmpd := WriteEmbeddedDirToTmp()
-		cd := CurDir()
-    authHeaders := map[string]string{
-        "authorization":           fmt.Sprintf("Bearer %s", accessToken),
-        "x-chalk-env-id":          targetEnvironment,
-        "x-chalk-deployment-type": "engine-grpc",
-    }
+		authHeaders := map[string]string{
+			"authorization":           fmt.Sprintf("Bearer %s", accessToken),
+			"x-chalk-env-id":          targetEnvironment,
+			"x-chalk-deployment-type": "engine-grpc",
+		}
 
-		authHeadersConfig := []runner.Option{
+		globalHeaders := []runner.Option{
 			runner.WithSkipTLSVerify(true),
 			runner.WithMetadata(authHeaders),
 			runner.WithReflectionMetadata(authHeaders),
-		}
-
-		queryHeaders := []runner.Option{
-			runner.WithRPS(rps),
 			runner.WithAsync(true),
 			runner.WithConnections(numConnections),
 			runner.WithTimeout(timeout),
@@ -125,40 +123,48 @@ var rootCmd = &cobra.Command{
 		var result *runner.Report
 		var err error
 		var wg sync.WaitGroup
-		switch lo.Ternary(test, "test", lo.Ternary(uploadFeatures, "upload", "query")) {
+		switch lo.Ternary(test, "test", lo.Ternary(uploadFeatures, "upload", lo.Ternary(inputFile != "", "query_file", "query"))) {
 		case "test":
-			result, err := Ping(grpcHost, authHeaders)
+			result, err = Ping(grpcHost, globalHeaders)
 		case "upload":
-			result, err := uploadFeaturesFile
+			result, err = BenchmarkUploadFeatures(
+				grpcHost,
+				globalHeaders,
+				uploadFeaturesFile,
+				rps,
+				benchmarkDuration,
+				rampDuration,
+				wg
+			)
+		case "query_file":
+			onlineQueryContext := ParseOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, tags)
+			result, err = BenchmarkQueryFromFile(
+				grpcHost,
+				globalHeaders,
+				inputFile,
+				&onlineQueryContext,
+				rps,
+				benchmarkDuration,
+				rampDuration,
+			)
+		case "query":
+			queryInputs, queryOutputs := ParseInputsAndOutputs(inputStr, inputNum, input, output)
+			onlineQueryContext := ParseOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, tags)
+			result, err = BenchmarkQuery(
+				grpcHost,
+				globalHeaders,
+				queryInputs,
+				queryOutputs,
+				&onlineQueryContext,
+				rps,
+				benchmarkDuration,
+				rampDuration,
+			)
 		}
 		if err != nil {
 			fmt.Printf("Failed to run request with err: %s\n", err)
 			os.Exit(1)
 		}
-		if test {
-			pingRequest, err := proto.Marshal(&enginev1.PingRequest{Num: 10})
-			if err != nil {
-				fmt.Printf("Failed to marshal ping request with err: %s\n", err)
-				os.Exit(1)
-			}
-			result, err = runner.Run(
-				strings.TrimPrefix(enginev1connect.QueryServicePingProcedure, "/"),
-        grpcHost,
-				slices.Concat(
-					authHeaders,
-					[]runner.Option{
-				    runner.WithRPS(1),
-				    runner.WithTotalRequests(1),
-				    runner.WithBinaryData(pingRequest),
-          },
-			  ),
-      )
-			if err != nil {
-				fmt.Printf("Failed to run Ping request with err: %s\n", err)
-				os.Exit(1)
-			}
-			fmt.Printf("Successfully pinged GRPC Engine\n")
-			os.Exit(0)
 
 		if uploadFeatures {
 			file, err := os.Open(uploadFeaturesFile)
@@ -187,7 +193,7 @@ var rootCmd = &cobra.Command{
 				strings.TrimPrefix(enginev1connect.QueryServiceUploadFeaturesBulkProcedure, "/"),
 				grpcHost,
 				slices.Concat(
-					authHeaders,
+					authHeadersConf,
 					queryHeaders,
 					[]runner.Option{
 						runner.WithBinaryData(binaryData),
@@ -286,48 +292,43 @@ var rootCmd = &cobra.Command{
 			additionalArgs := []runner.Option{runner.WithTimeout(timeout)}
 			runnerOptions = append(runnerOptions, additionalArgs...)
 
-			if rps > MinRPSForRamp {
-				step := uint(math.Floor(float64(rps) / float64(rampDurationSeconds)))
+			step := uint(math.Floor(float64(rps) / float64(rampDurationSeconds)))
 
-				loadEnd := step * rampDurationSeconds
+			loadEnd := step * rampDurationSeconds
 
-				numWarmUpQueries := (rampDurationSeconds / 2) * (2*DefaultLoadRampStart + (rampDurationSeconds-1)*step)
-				fmt.Printf("Ramping up to %d RPS over %d seconds with %d warm-up queries\n", rps, rampDurationSeconds, numWarmUpQueries)
+			numWarmUpQueries := (rampDurationSeconds / 2) * (2*DefaultLoadRampStart + (rampDurationSeconds-1)*step)
+			fmt.Printf("Ramping up to %d RPS over %d seconds with %d warm-up queries\n", rps, rampDurationSeconds, numWarmUpQueries)
 
-				if step >= 0 {
-					runnerOptions = []runner.Option{
-						runner.WithTotalRequests(totalRequests + numWarmUpQueries),
-						runner.WithLoadSchedule("line"),
-						runner.WithLoadStart(DefaultLoadRampStart),
-						runner.WithLoadEnd(loadEnd),
-						runner.WithLoadStep(int(step)),
-						runner.WithSkipFirst(numWarmUpQueries),
-						runner.WithRPS(rps),
-						runner.WithAsync(true),
-						runner.WithConnections(numConnections),
-						runner.WithMetadata(map[string]string{
-							"authorization":           fmt.Sprintf("Bearer %s", accessToken),
-							"x-chalk-env-id":          targetEnvironment,
-							"x-chalk-deployment-type": "engine-grpc",
-						}),
-						runner.WithReflectionMetadata(map[string]string{
-							"authorization":           fmt.Sprintf("Bearer %s", accessToken),
-							"x-chalk-env-id":          targetEnvironment,
-							"x-chalk-deployment-type": "engine-grpc",
-						}),
-						runner.WithSkipTLSVerify(true),
-						runner.WithConcurrency(concurrency),
-						runner.WithBinaryData(binaryData),
-						runner.WithTimeout(timeout),
-					}
+			if step >= 0 {
+				runnerOptions = []runner.Option{
+					runner.WithTotalRequests(totalRequests + numWarmUpQueries),
+					runner.WithLoadSchedule("line"),
+					runner.WithLoadStart(DefaultLoadRampStart),
+					runner.WithLoadEnd(loadEnd),
+					runner.WithLoadStep(int(step)),
+					runner.WithSkipFirst(numWarmUpQueries),
+					runner.WithRPS(rps),
+					runner.WithAsync(true),
+					runner.WithConnections(numConnections),
+					runner.WithMetadata(map[string]string{
+						"authorization":           fmt.Sprintf("Bearer %s", accessToken),
+						"x-chalk-env-id":          targetEnvironment,
+						"x-chalk-deployment-type": "engine-grpc",
+					}),
+					runner.WithReflectionMetadata(map[string]string{
+						"authorization":           fmt.Sprintf("Bearer %s", accessToken),
+						"x-chalk-env-id":          targetEnvironment,
+						"x-chalk-deployment-type": "engine-grpc",
+					}),
+					runner.WithSkipTLSVerify(true),
+					runner.WithConcurrency(concurrency),
+					runner.WithBinaryData(binaryData),
+					runner.WithTimeout(timeout),
 				}
-				// add extra queries total request
-				totalRequests += numWarmUpQueries
-
-			} else {
-				fmt.Printf("Running without ramp up since requested RPS is less than the minimum rps for ramp up: %d.\n", MinRPSForRamp)
-				rampDuration = time.Duration(0)
 			}
+			// add extra queries total request
+			totalRequests += numWarmUpQueries
+
 			wg.Add(1)
 			go pbar(benchmarkDuration, rampDuration, &wg)
 
@@ -343,44 +344,8 @@ var rootCmd = &cobra.Command{
 		}
 		wg.Wait()
 
-		fmt.Println("\nPrinting Report...")
-		processReport(result)
-		p := printer.ReportPrinter{
-			Out:    os.Stdout,
-			Report: result,
-		}
-
-		err := p.Print("summary")
-		if err != nil {
-			fmt.Printf("Failed to print report with error: %s\n", err)
-			os.Exit(1)
-		}
-
-		cd := CurDir()
-		reportFile := filepath.Join(cd, fmt.Sprintf("%s.html", strings.TrimSuffix(outputFile, ".html")))
-		outputFile, err := os.OpenFile(reportFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0660)
-		if err != nil {
-			fmt.Printf("Failed to open report file with error: %s\n", err)
-			os.Exit(1)
-		}
-
-		// prevents the bearer token from being printed out as part of the report
-		if !includeRequestMetadata {
-			result.Options.Metadata = nil
-		}
-
-		htmlSaver := printer.ReportPrinter{
-			Out:    outputFile,
-			Report: result,
-		}
-
-		err = htmlSaver.Print("html")
-		if err != nil {
-			fmt.Printf("Failed to save report with error: %s\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("Wrote report file to %s\n", reportFile)
-	},
+		PrintReport(outputFilename, result, includeRequestMetadata)
+	}
 }
 
 func getParquetFileRecordReader(featuresFile string) (pqarrow.RecordReader, error) {
@@ -423,7 +388,7 @@ var rampDuration time.Duration
 var numConnections uint
 var concurrency uint
 var timeout time.Duration
-var outputFile string
+var outputFilename string
 
 // environment & client parameters
 var host string
@@ -436,6 +401,7 @@ var clientSecret string
 var input map[string]string
 var inputStr map[string]string
 var inputNum map[string]int64
+var inputFile string
 var output []string
 var tags []string
 var uploadFeatures bool
@@ -465,7 +431,7 @@ func init() {
 	flags.UintVar(&numConnections, "num_connections", 16, "The number of gRPC connections used by the tool.")
 	flags.UintVar(&concurrency, "concurrency", 16, "Number of workers (concurrency) for requests.")
 	flags.DurationVar(&timeout, "timeout", 20*time.Second, "Timeout for requests.")
-	flags.StringVar(&outputFile, "output_file", "result.html", "Output filename for the saved report.")
+	flags.StringVar(&outputFilename, "output_file", "result.html", "Output filename for the saved report.")
 	flags.StringVar(&token, "token", os.Getenv("CHALK_BENCHMARK_TOKEN"), "jwt to use for the request—if this is provided the client_id and client_secret will be ignored.")
 
 	// environment & client parameters
@@ -486,8 +452,8 @@ func init() {
 	flags.StringVar(&queryName, "query_name", "", "Query name for the benchmark query.")
 
 	// planner options
-	flags.BoolVar(&useNativeSql, "native_sql", false, "Whether to use the `use_native_sql_operators` planner option.")
-	flags.BoolVar(&staticUnderscoreExprs, "static_underscore", true, "Whether to use the `static_underscore_expressions` planner option.")
+	flags.BoolVar(&useNativeSql, "native_sql", false, "Whether to use the `use_native_sql_operators` planner option—defaults to whatever is set for environment.")
+	flags.BoolVar(&staticUnderscoreExprs, "static_underscore", true, "Whether to use the `static_underscore_expressions` planner option—defaults to whatever is set for environment.")
 
 	// other parameters
 	flags.BoolVar(&includeRequestMetadata, "include_request_md", false, "Whether to include request metadata in the report: this defaults to false since a true value includes the auth token.")
