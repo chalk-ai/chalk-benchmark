@@ -199,7 +199,7 @@ var rootCmd = &cobra.Command{
 			}
 			result, err = runner.Run(
 				strings.TrimPrefix(enginev1connect.QueryServiceUploadFeaturesBulkProcedure, "/"),
-				grpcHost,
+				lo.Ternary(queryHost == "", grpcHost, queryHost),
 				runner.WithRPS(rps),
 				runner.WithAsync(true),
 				runner.WithTotalRequests(1000),
