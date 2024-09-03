@@ -17,29 +17,23 @@ func CurDir() string {
 	return cwd
 }
 
-type RampUp struct {
-	rampStep int
-	ramp
-	NumWarmUpQueries int
-}
-
-func QueryRateOptions(rps int, duration time.Duration, benchmarkDuration time.Duration, rampDuration time.Duration, totalRequests int) []runner.Option {
+func QueryRateOptions(rps uint, benchmarkDuration time.Duration, rampDuration time.Duration, totalRequests uint) []runner.Option {
 	queryRunOptions := []runner.Option{
-		runner.WithRPS(uint(rps)),
+		runner.WithRPS(rps),
 	}
-	var totalRequests uint
-	if benchmarkDuration != time.Duration(0) {
-		durationSeconds := float64(benchmarkDuration / time.Second)
-		totalRequests = uint(durationSeconds * float64(rps))
+	var durationSeconds uint
+	if totalRequests == 0 {
+		durationSeconds = uint(math.Ceil(float64(benchmarkDuration / time.Second)))
+		totalRequests = uint(float64(durationSeconds * rps))
 	} else {
-		rps = totalRequests / int(duration.Seconds())
+		durationSeconds = uint(math.Ceil(float64(totalRequests) / float64(rps)))
 	}
 	if rampDuration != time.Duration(0) {
+		rampDurationSeconds := uint(math.Floor(float64(rampDuration / time.Second)))
+
 		step := uint(math.Floor(float64(rps) / float64(rampDurationSeconds)))
 		loadEnd := step * rampDurationSeconds
-
 		numWarmUpQueries := (rampDurationSeconds / 2) * (2*DefaultLoadRampStart + (rampDurationSeconds-1)*step)
-		totalRequests := uint(float64(rps) * float64(benchmarkDuration/time.Second))
 		return slices.Concat(
 			queryRunOptions,
 			[]runner.Option{
@@ -48,8 +42,12 @@ func QueryRateOptions(rps int, duration time.Duration, benchmarkDuration time.Du
 				runner.WithLoadEnd(loadEnd),
 				runner.WithLoadStep(int(step)),
 				runner.WithSkipFirst(numWarmUpQueries),
+				runner.WithTotalRequests(totalRequests + numWarmUpQueries),
 			},
 		)
 	}
-	return queryRunOptions
+	return append(
+		queryRunOptions,
+		runner.WithTotalRequests(totalRequests),
+	)
 }

@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-func ParseInputsAndOutputs(inputStr map[string]string, inputNum map[string]int64, input map[string]string, output []string) (map[string]*structpb.Value, []*commonv1.OutputExpr) {
+func ParseInputs(inputStr map[string]string, inputNum map[string]int64, input map[string]string) map[string]*structpb.Value {
 	if inputStr == nil && inputNum == nil && input == nil {
 		fmt.Println("No inputs provided, please provide inputs with either the `--in_num` or the `--in_str` flags")
 		os.Exit(1)
@@ -25,6 +25,10 @@ func ParseInputsAndOutputs(inputStr map[string]string, inputNum map[string]int64
 		inputsProcessed[k] = structpb.NewStringValue(v)
 	}
 
+	return inputsProcessed
+}
+
+func ParseOutputs(output []string) []*commonv1.OutputExpr {
 	outputsProcessed := make([]*commonv1.OutputExpr, len(output))
 	for i := 0; i < len(outputsProcessed); i++ {
 		outputsProcessed[i] = &commonv1.OutputExpr{
@@ -33,7 +37,7 @@ func ParseInputsAndOutputs(inputStr map[string]string, inputNum map[string]int64
 			},
 		}
 	}
-	return inputsProcessed, outputsProcessed
+	return outputsProcessed
 }
 
 func ParseOnlineQueryContext(useNativeSql bool, staticUnderscoreExprs bool, queryName string, tags []string) *commonv1.OnlineQueryContext {
@@ -50,5 +54,5 @@ func ParseOnlineQueryContext(useNativeSql bool, staticUnderscoreExprs bool, quer
 	if tags != nil {
 		onlineQueryContext.Tags = tags
 	}
-	return onlineQueryContext
+	return &onlineQueryContext
 }
