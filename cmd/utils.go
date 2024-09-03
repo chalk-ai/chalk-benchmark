@@ -17,7 +17,7 @@ func CurDir() string {
 	return cwd
 }
 
-func QueryRateOptions(rps uint, benchmarkDuration time.Duration, rampDuration time.Duration, totalRequests uint) []runner.Option {
+func QueryRateOptions(rps uint, benchmarkDuration time.Duration, rampDuration time.Duration, totalRequests uint) ([]runner.Option, time.Duration) {
 	queryRunOptions := []runner.Option{
 		runner.WithRPS(rps),
 	}
@@ -27,6 +27,7 @@ func QueryRateOptions(rps uint, benchmarkDuration time.Duration, rampDuration ti
 		totalRequests = uint(float64(durationSeconds * rps))
 	} else {
 		durationSeconds = uint(math.Ceil(float64(totalRequests) / float64(rps)))
+		benchmarkDuration = time.Duration(durationSeconds) * time.Second
 	}
 	if rampDuration != time.Duration(0) {
 		rampDurationSeconds := uint(math.Floor(float64(rampDuration / time.Second)))
@@ -44,10 +45,10 @@ func QueryRateOptions(rps uint, benchmarkDuration time.Duration, rampDuration ti
 				runner.WithSkipFirst(numWarmUpQueries),
 				runner.WithTotalRequests(totalRequests + numWarmUpQueries),
 			},
-		)
+		), benchmarkDuration
 	}
 	return append(
 		queryRunOptions,
 		runner.WithTotalRequests(totalRequests),
-	)
+	), benchmarkDuration
 }

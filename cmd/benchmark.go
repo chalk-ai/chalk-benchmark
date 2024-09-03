@@ -51,7 +51,7 @@ func BenchmarkQuery(
 	rampDuration time.Duration,
 ) BenchmarkFunction {
 	// total requests calculated from duration and RPS
-	queryOptions := QueryRateOptions(rps, benchmarkDuration, rampDuration, 0)
+	queryOptions, _ := QueryRateOptions(rps, benchmarkDuration, rampDuration, 0)
 
 	oqr := commonv1.OnlineQueryRequest{
 		Inputs:  queryInputs,
@@ -90,9 +90,9 @@ func BenchmarkQueryFromFile(
 	rps uint,
 	benchmarkDuration time.Duration,
 	rampDuration time.Duration,
-) BenchmarkFunction {
+) (BenchmarkFunction, time.Duration) {
 	// total requests calculated from duration and RPS
-	queryOptions := QueryRateOptions(rps, benchmarkDuration, rampDuration, uint(len(records)))
+	queryOptions, benchmarkDuration := QueryRateOptions(rps, benchmarkDuration, rampDuration, uint(len(records)))
 
 	// binaryData, err := proto.Marshal(&onlineQueryContext)
 	binaryDataFunc := func(mtd *desc.MethodDescriptor, cd *runner.CallData) []byte {
@@ -124,7 +124,7 @@ func BenchmarkQueryFromFile(
 				},
 			)...,
 		)
-	}
+	}, benchmarkDuration
 }
 
 func BenchmarkUploadFeatures(
@@ -136,7 +136,7 @@ func BenchmarkUploadFeatures(
 	rampDuration time.Duration,
 ) BenchmarkFunction {
 	file, err := os.Open(uploadFeaturesFile)
-	queryOptions := QueryRateOptions(rps, benchmarkDuration, rampDuration, 0)
+	queryOptions, _ := QueryRateOptions(rps, benchmarkDuration, rampDuration, 0)
 	if err != nil {
 		fmt.Printf("Failed to open file with err: %s\n", err)
 		os.Exit(1)

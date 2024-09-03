@@ -136,7 +136,7 @@ var rootCmd = &cobra.Command{
 				os.Exit(1)
 			}
 			queryOutputs := ParseOutputs(output)
-			benchmarkRunner = BenchmarkQueryFromFile(
+			benchmarkRunner, benchmarkDuration = BenchmarkQueryFromFile(
 				grpcHost,
 				globalHeaders,
 				records,
