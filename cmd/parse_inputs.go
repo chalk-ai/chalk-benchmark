@@ -9,7 +9,7 @@ import (
 
 func ParseInputs(inputStr map[string]string, inputNum map[string]int64, input map[string]string) map[string]*structpb.Value {
 	if inputStr == nil && inputNum == nil && input == nil {
-		fmt.Println("No inputs provided, please provide inputs with either the `--in_num` or the `--in_str` flags")
+		fmt.Println("No inputs provided, please provide inputs with either `--in`, `--in_num`, `--in_str`, or `--in_file` flags")
 		os.Exit(1)
 	}
 	inputsProcessed := make(map[string]*structpb.Value)

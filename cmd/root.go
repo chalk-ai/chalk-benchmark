@@ -17,7 +17,7 @@ import (
 	progress "github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	structpb "google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 const DefaultLoadRampStart = 2
@@ -61,7 +61,11 @@ func pbar(t time.Duration, rampDuration time.Duration, wg *sync.WaitGroup) {
 	if float64(rampDuration) != 0 {
 		fmt.Println("Ramping up load test...")
 		for i := int64(0); i < int64(rampDuration.Seconds()); i++ {
-			rampBar.Add(1)
+			err := rampBar.Add(1)
+			if err != nil {
+				fmt.Printf("Failed to update progress bar with err: %s\n", err)
+				os.Exit(1)
+			}
 			time.Sleep(1 * time.Second)
 		}
 	}
@@ -72,7 +76,11 @@ func pbar(t time.Duration, rampDuration time.Duration, wg *sync.WaitGroup) {
 	)
 	fmt.Println("\nRunning load test...")
 	for i := int64(0); i < int64(t.Seconds()); i++ {
-		bar.Add(1)
+		err := bar.Add(1)
+		if err != nil {
+			fmt.Printf("Failed to update progress bar with err: %s\n", err)
+			os.Exit(1)
+		}
 		time.Sleep(1 * time.Second)
 	}
 	fmt.Println("\nDone sending requests, waiting for all responses...")
@@ -187,7 +195,7 @@ func Execute() {
 	}
 }
 
-func normalizeFlagNames(f *pflag.FlagSet, name string) pflag.NormalizedName {
+func normalizeFlagNames(_ *pflag.FlagSet, name string) pflag.NormalizedName {
 	switch name {
 	case "host":
 		name = "api-host"

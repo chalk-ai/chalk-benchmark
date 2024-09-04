@@ -29,6 +29,7 @@ func convertValuesToRecords(values []*structpb.Value, columnNames []string) ([]R
 
 func ReadParquetFile(featuresFile string) ([]Record, error) {
 	file, err := parquetFile.OpenParquetFile(featuresFile, false)
+	defer file.Close()
 	if err != nil {
 		return nil, err
 	}
