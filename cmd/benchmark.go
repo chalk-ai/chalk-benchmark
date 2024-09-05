@@ -143,7 +143,7 @@ func BenchmarkQueryFromFile(
 					)...,
 				)
 			},
-			Duration: benchmarkDuration,
+			Duration: queryOption.Duration,
 		})
 	}
 	return bfs
