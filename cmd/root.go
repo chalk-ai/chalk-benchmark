@@ -118,15 +118,12 @@ var rootCmd = &cobra.Command{
 			runner.WithSkipTLSVerify(insecureQueryHost),
 		}
 
-		var benchmarkRunner BenchmarkFunction
-		var err error
-		var wg sync.WaitGroup
+		var benchmarkRunner []BenchmarkFunction
 		var result *runner.Report
 
 		switch lo.Ternary(test, "test", lo.Ternary(uploadFeatures, "upload", lo.Ternary(inputFile != "", "query_file", "query"))) {
 		case "test":
 			benchmarkRunner = BenchmarkPing(grpcHost, globalHeaders)
-			result, err = benchmarkRunner()
 		case "upload":
 			benchmarkRunner = BenchmarkUploadFeatures(
 				grpcHost,
@@ -135,6 +132,7 @@ var rootCmd = &cobra.Command{
 				rps,
 				benchmarkDuration,
 				rampDuration,
+				scheduleFile,
 			)
 		case "query_file":
 			onlineQueryContext := ParseOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, tags)
@@ -144,7 +142,7 @@ var rootCmd = &cobra.Command{
 				os.Exit(1)
 			}
 			queryOutputs := ParseOutputs(output)
-			benchmarkRunner, benchmarkDuration = BenchmarkQueryFromFile(
+			benchmarkRunner = BenchmarkQueryFromFile(
 				grpcHost,
 				globalHeaders,
 				records,
@@ -153,6 +151,7 @@ var rootCmd = &cobra.Command{
 				rps,
 				benchmarkDuration,
 				rampDuration,
+				scheduleFile,
 			)
 		case "query":
 			queryInputs := ParseInputs(inputStr, inputNum, input)
@@ -167,24 +166,13 @@ var rootCmd = &cobra.Command{
 				rps,
 				benchmarkDuration,
 				rampDuration,
+				scheduleFile,
 			)
 		}
-		if !noProgress && !test {
-			wg.Add(1)
-			go pbar(benchmarkDuration, rampDuration, &wg)
-		}
 
-		result, err = benchmarkRunner()
+		result = RunBenchmarks(benchmarkRunner)
 
-		if !noProgress && !test {
-			wg.Wait()
-		}
-		if err != nil {
-			fmt.Printf("Failed to run request with err: %s\n", err)
-			os.Exit(1)
-		}
-
-		PrintReport(outputFilename, result, includeRequestMetadata)
+		PrintReport(outputFile, result, includeRequestMetadata)
 	},
 }
 
@@ -215,7 +203,8 @@ var rampDuration time.Duration
 var numConnections uint
 var concurrency uint
 var timeout time.Duration
-var outputFilename string
+var outputFile string
+var scheduleFile string
 
 // environment & client parameters
 var host string
@@ -259,8 +248,9 @@ func init() {
 	flags.UintVar(&numConnections, "num_connections", 16, "The number of gRPC connections used by the tool.")
 	flags.UintVar(&concurrency, "concurrency", 16, "Number of workers (concurrency) for requests.")
 	flags.DurationVar(&timeout, "timeout", 20*time.Second, "Timeout for requests.")
-	flags.StringVar(&outputFilename, "output_file", "result.html", "Output filename for the saved report.")
+	flags.StringVar(&outputFile, "output_file", "result.html", "Output filename for the saved report.")
 	flags.StringVar(&token, "token", os.Getenv("CHALK_BENCHMARK_TOKEN"), "jwt to use for the request—if this is provided the client_id and client_secret will be ignored.")
+	flags.StringVar(&scheduleFile, "schedule_file", "", "Provide the schedule for the benchmark query as a JSON file.")
 
 	// environment & client parameters
 	flags.StringVar(&host, "host", "https://api.chalk.ai", "API server url—in host cases, this default will work.")

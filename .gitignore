@@ -3,3 +3,5 @@ chalk-benchmark*
 chalk-benchmark
 result.html
 .idea/
+*.parquet
+*.json
