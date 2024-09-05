@@ -11,6 +11,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 	"io"
+	"maps"
 	"os"
 	"slices"
 	"sort"
@@ -276,7 +277,6 @@ func mergeReports(reports []*runner.Report) *runner.Report {
 	} else {
 		p99 = mergedReport.LatencyDistribution[idx].Latency.Seconds()
 	}
-
 	mergedReport.Histogram = runner.Histogram(okLats, mergedReport.Slowest.Seconds(), mergedReport.Fastest.Seconds(), p99)
 	return mergedReport
 }
