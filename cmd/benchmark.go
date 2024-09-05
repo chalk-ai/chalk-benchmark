@@ -11,7 +11,6 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 	"io"
-	"maps"
 	"os"
 	"slices"
 	"sort"
