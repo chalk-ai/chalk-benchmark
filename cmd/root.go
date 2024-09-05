@@ -234,6 +234,12 @@ var includeRequestMetadata bool
 var verbose bool
 var noProgress bool
 
+// p50, p95, p99 buckets
+var p50 bool
+var p95 bool
+var p99 bool
+var percentileWindow time.Duration
+
 func init() {
 	viper.AutomaticEnv()
 	flags := rootCmd.Flags()
@@ -278,4 +284,10 @@ func init() {
 	flags.BoolVar(&includeRequestMetadata, "include_request_md", false, "Whether to include request metadata in the report: this defaults to false since a true value includes the auth token.")
 	flags.BoolVar(&verbose, "verbose", false, "Whether to print verbose output.")
 	flags.BoolVar(&noProgress, "no-progress", false, "Whether to print verbose output.")
+
+	// p50, p95, p99 buckets
+	flags.BoolVar(&p50, "p50", false, "The amount of time to use in bucketing P50—the default is to not include P50 in the chart")
+	flags.BoolVar(&p95, "p95", false, "The amount of time to use in bucketing P95—the default is to not include P95 in the chart")
+	flags.BoolVar(&p99, "p99", false, "The amount of time to use in bucketing P99—the default is to not include P99 in the chart")
+	flags.DurationVar(&percentileWindow, "percentile-window", time.Duration(5.0*float64(time.Second)), "The amount of time to use in bucketing P99—the default is to not include P99 in the chart")
 }

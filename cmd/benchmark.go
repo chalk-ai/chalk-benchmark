@@ -11,6 +11,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 	"io"
+	"math"
 	"os"
 	"slices"
 	"sort"
@@ -236,31 +237,30 @@ func RunBenchmarks(bfs []BenchmarkFunction) *runner.Report {
 
 func mergeReports(reports []*runner.Report) *runner.Report {
 
-	if len(reports) == 1 {
-		return reports[0]
-	}
 	mergedReport := reports[0]
 
-	for _, report := range reports[1:] {
-		tempDetails := slices.Concat(mergedReport.Details, report.Details)
-		sort.Slice(tempDetails, func(i, j int) bool {
-			return tempDetails[i].Latency < tempDetails[j].Latency
-		})
-		mergedReport.Details = tempDetails
-		mergedReport.Count += report.Count
-		mergedReport.Slowest = max(mergedReport.Slowest, report.Slowest)
-		mergedReport.Fastest = min(mergedReport.Fastest, report.Fastest)
-		mergedReport.Total += report.Total
-		for k, v := range mergedReport.ErrorDist {
-			mergedReport.ErrorDist[k] = report.ErrorDist[k] + v
+	if len(reports) > 1 {
+		for _, report := range reports[1:] {
+			tempDetails := slices.Concat(mergedReport.Details, report.Details)
+			sort.Slice(tempDetails, func(i, j int) bool {
+				return tempDetails[i].Latency < tempDetails[j].Latency
+			})
+			mergedReport.Details = tempDetails
+			mergedReport.Count += report.Count
+			mergedReport.Slowest = max(mergedReport.Slowest, report.Slowest)
+			mergedReport.Fastest = min(mergedReport.Fastest, report.Fastest)
+			mergedReport.Total += report.Total
+			for k, v := range mergedReport.ErrorDist {
+				mergedReport.ErrorDist[k] = report.ErrorDist[k] + v
+			}
+			for k, v := range mergedReport.StatusCodeDist {
+				mergedReport.StatusCodeDist[k] = report.StatusCodeDist[k] + v
+			}
+			mergedReport.Average = time.Duration(
+				(float64(mergedReport.Average)*float64(mergedReport.Count) + float64(report.Average)*float64(report.Count)) /
+					float64(mergedReport.Count+report.Count),
+			)
 		}
-		for k, v := range mergedReport.StatusCodeDist {
-			mergedReport.StatusCodeDist[k] = report.StatusCodeDist[k] + v
-		}
-		mergedReport.Average = time.Duration(
-			(float64(mergedReport.Average)*float64(mergedReport.Count) + float64(report.Average)*float64(report.Count)) /
-				float64(mergedReport.Count+report.Count),
-		)
 	}
 	okLats := make([]float64, 0)
 	for _, d := range mergedReport.Details {
@@ -270,12 +270,80 @@ func mergeReports(reports []*runner.Report) *runner.Report {
 	idx := slices.IndexFunc(mergedReport.LatencyDistribution, func(l runner.LatencyDistribution) bool {
 		return l.Percentage == 99
 	})
-	var p99 float64
+	var p99Average float64
 	if idx == -1 {
-		p99 = mergedReport.Slowest.Seconds()
+		p99Average = mergedReport.Slowest.Seconds()
 	} else {
-		p99 = mergedReport.LatencyDistribution[idx].Latency.Seconds()
+		p99Average = mergedReport.LatencyDistribution[idx].Latency.Seconds()
 	}
-	mergedReport.Histogram = runner.Histogram(okLats, mergedReport.Slowest.Seconds(), mergedReport.Fastest.Seconds(), p99)
+	mergedReport.Histogram = runner.Histogram(okLats, mergedReport.Slowest.Seconds(), mergedReport.Fastest.Seconds(), p99Average)
+	timeSortedLatencies := mergedReport.Details
+	slices.SortFunc(timeSortedLatencies, func(a, b runner.ResultDetail) int {
+		return int(a.Timestamp.Sub(b.Timestamp))
+	})
+	GroupedLatenciesRPS := GroupLatencies(timeSortedLatencies, time.Duration(1*float64(time.Second)))
+	var RPS []runner.DataPointRPS
+	for k, v := range GroupedLatenciesRPS {
+		RPS = append(RPS, runner.DataPointRPS{X: float64(k), Y: float64(len(v))})
+	}
+	slices.SortFunc(RPS, func(a, b runner.DataPointRPS) int {
+		return int(a.X - b.X)
+	})
+	mergedReport.RPS = RPS
+
+	GroupedLatencies := GroupLatencies(timeSortedLatencies, percentileWindow)
+
+	Aggs := CalculatePercentiles(GroupedLatencies, p50, p95, p99)
+	slices.SortFunc(Aggs, func(a, b runner.DataPoint) int {
+		return int(a.X - b.X)
+	})
+	mergedReport.Aggs = Aggs
+	mergedReport.P99 = p99
+	mergedReport.P95 = p95
+	mergedReport.P50 = p50
 	return mergedReport
+}
+
+func GroupLatencies(details []runner.ResultDetail, window time.Duration) map[time.Duration][]float64 {
+	groupedLatencies := make(map[time.Duration][]float64)
+	initialTimestamp := details[0].Timestamp
+	durationTarget := window
+
+	i := 0
+	for i < len(details) {
+		var latencies []float64
+		for i < len(details) && details[i].Timestamp.Sub(initialTimestamp) < durationTarget {
+			latencies = append(latencies, float64(details[i].Latency))
+			i += 1
+		}
+		slices.Sort(latencies)
+		groupedLatencies[durationTarget-window] = latencies
+		durationTarget += window
+	}
+	return groupedLatencies
+}
+
+func CalculatePercentiles(details map[time.Duration][]float64, p50 bool, p95 bool, p99 bool) []runner.DataPoint {
+	var dps []runner.DataPoint
+	for k, d := range details {
+		dps = append(dps, runner.DataPoint{X: float64(k), Y: CalculatePercentile(d, p50, p95, p99)})
+	}
+	return dps
+}
+
+func CalculatePercentile(details []float64, p50 bool, p95 bool, p99 bool) runner.DataPointAgg {
+	var dp runner.DataPointAgg
+	if p50 {
+		p50index := uint(math.Ceil(float64(len(details)) * .5))
+		dp.P50 = details[min(p50index, uint(len(details)-1))]
+	}
+	if p95 {
+		p95index := uint(math.Ceil(float64(len(details)) * .95))
+		dp.P95 = details[min(p95index, uint(len(details)-1))]
+	}
+	if p99 {
+		p99index := uint(math.Ceil(float64(len(details)) * .99))
+		dp.P99 = details[min(p99index, uint(len(details)-1))]
+	}
+	return dp
 }
