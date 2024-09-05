@@ -1,6 +1,6 @@
 module github.com/chalk-ai/chalk-benchmark
 
-go 1.22.3
+go 1.23
 
 require (
 	github.com/apache/arrow/go/v17 v17.0.0
