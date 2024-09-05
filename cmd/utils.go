@@ -52,6 +52,7 @@ func ReadJSONFile(filePath string) []byte {
 type QueryRun struct {
 	Options  []runner.Option
 	Duration time.Duration
+	Type     string
 }
 
 func ParseScheduleFile(scheduleFile string) []QueryRun {
@@ -95,6 +96,7 @@ func ParseScheduleFile(scheduleFile string) []QueryRun {
 						runner.WithLoadStart(uint(sp.StepStart)),
 					},
 					Duration: stepTime,
+					Type:     fmt.Sprintf("Step[NumRequests=%d, StepSize=%d]", numRequests, sp.StepSize),
 				},
 			)
 		case "const":
@@ -110,15 +112,18 @@ func ParseScheduleFile(scheduleFile string) []QueryRun {
 			}
 			if i == 0 && rampDuration != time.Duration(0) {
 				queryRuns = QueryRateOptions(uint(cp.RPS), stepTime, rampDuration, 0, "")
+				continue
 			}
+			numRequests := uint(float64(cp.RPS) * stepTime.Seconds())
 			queryRuns = append(
 				queryRuns,
 				QueryRun{
 					Options: []runner.Option{
-						runner.WithTotalRequests(uint(float64(cp.RPS) * stepTime.Seconds())),
+						runner.WithTotalRequests(numRequests),
 						runner.WithRPS(uint(cp.RPS)),
 					},
 					Duration: stepTime,
+					Type:     fmt.Sprintf("Running for %s at %d requests/second [%d queries]", stepTime, cp.RPS, numRequests),
 				},
 			)
 		default:
@@ -148,6 +153,22 @@ func QueryRateOptions(rps uint, benchmarkDuration time.Duration, rampDuration ti
 		rampDurationSeconds := uint(math.Floor(float64(rampDuration / time.Second)))
 
 		step := uint(math.Floor(float64(rps) / float64(rampDurationSeconds)))
+		if step == 0 {
+			return []QueryRun{
+				{
+					Options: slices.Concat(
+						queryRunOptions,
+						[]runner.Option{
+							runner.WithTotalRequests(totalRequests),
+							runner.WithRPS(rps),
+						},
+					),
+					Duration: benchmarkDuration,
+					Type:     fmt.Sprintf("Running for %s at %d requests/second [%d queries]", benchmarkDuration, rps, totalRequests),
+				},
+			}
+
+		}
 		loadEnd := step * rampDurationSeconds
 		numWarmUpQueries := (rampDurationSeconds / 2) * (2*DefaultLoadRampStart + (rampDurationSeconds-1)*step)
 		return []QueryRun{
@@ -164,6 +185,7 @@ func QueryRateOptions(rps uint, benchmarkDuration time.Duration, rampDuration ti
 					},
 				),
 				Duration: benchmarkDuration,
+				Type:     fmt.Sprintf("Running for %s at %d requests/second [%d queries]", benchmarkDuration, rps, totalRequests),
 			},
 		}
 	}
@@ -174,6 +196,7 @@ func QueryRateOptions(rps uint, benchmarkDuration time.Duration, rampDuration ti
 				runner.WithTotalRequests(totalRequests),
 			),
 			Duration: benchmarkDuration,
+			Type:     fmt.Sprintf("Running for %s at %d requests/second [%d queries]", benchmarkDuration, rps, totalRequests),
 		},
 	}
 }

@@ -51,7 +51,7 @@ func processReport(result *runner.Report) {
 	result.Rps = float64(result.Count) / result.Total.Seconds()
 }
 
-func pbar(t time.Duration, rampDuration time.Duration, wg *sync.WaitGroup) {
+func pbar(t time.Duration, rampDuration time.Duration, wg *sync.WaitGroup, stepDescription string) {
 	defer wg.Done()
 	rampBar := progress.NewOptions(
 		int(rampDuration.Seconds()),
@@ -74,7 +74,7 @@ func pbar(t time.Duration, rampDuration time.Duration, wg *sync.WaitGroup) {
 		progress.OptionSetPredictTime(false),
 		progress.OptionFullWidth(),
 	)
-	fmt.Println("\nRunning load test...")
+	fmt.Printf("\n%s\n", stepDescription)
 	for i := int64(0); i < int64(t.Seconds()); i++ {
 		err := bar.Add(1)
 		if err != nil {
@@ -83,7 +83,6 @@ func pbar(t time.Duration, rampDuration time.Duration, wg *sync.WaitGroup) {
 		}
 		time.Sleep(1 * time.Second)
 	}
-	fmt.Println("\nDone sending requests, waiting for all responses...")
 }
 
 var rootCmd = &cobra.Command{

@@ -7,12 +7,14 @@ import (
 	"github.com/chalk-ai/chalk-go/gen/chalk/engine/v1/enginev1connect"
 	"github.com/chalk-ai/ghz/runner"
 	"github.com/jhump/protoreflect/desc"
+	"github.com/samber/lo"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 	"io"
 	"maps"
 	"os"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -21,6 +23,7 @@ import (
 type BenchmarkFunction struct {
 	F        func() (*runner.Report, error)
 	Duration time.Duration
+	Type     string
 }
 
 func BenchmarkPing(grpcHost string, authHeaders []runner.Option) []BenchmarkFunction {
@@ -91,6 +94,7 @@ func BenchmarkQuery(
 				)
 			},
 			Duration: queryOption.Duration,
+			Type:     queryOption.Type,
 		})
 	}
 	return bfs
@@ -144,6 +148,7 @@ func BenchmarkQueryFromFile(
 				)
 			},
 			Duration: queryOption.Duration,
+			Type:     queryOption.Type,
 		})
 	}
 	return bfs
@@ -207,13 +212,13 @@ func BenchmarkUploadFeatures(
 func RunBenchmarks(bfs []BenchmarkFunction) *runner.Report {
 	var reports []*runner.Report
 	totalRunTime := time.Duration(0)
-	for _, bf := range bfs {
+	for i, bf := range bfs {
 		totalRunTime += bf.Duration
 		var wg sync.WaitGroup
 
 		if !noProgress && !test {
 			wg.Add(1)
-			go pbar(bf.Duration, rampDuration, &wg)
+			go pbar(bf.Duration, lo.Ternary(i == 0, rampDuration, time.Duration(0)), &wg, bf.Type)
 		}
 
 		result, err := bf.F()
@@ -238,12 +243,21 @@ func mergeReports(reports []*runner.Report) *runner.Report {
 	mergedReport := reports[0]
 
 	for _, report := range reports[1:] {
-		mergedReport.Details = slices.Concat(mergedReport.Details, report.Details)
+		tempDetails := slices.Concat(mergedReport.Details, report.Details)
+		sort.Slice(tempDetails, func(i, j int) bool {
+			return tempDetails[i].Latency < tempDetails[j].Latency
+		})
+		mergedReport.Details = tempDetails
 		mergedReport.Count += report.Count
 		mergedReport.Slowest = max(mergedReport.Slowest, report.Slowest)
 		mergedReport.Fastest = min(mergedReport.Fastest, report.Fastest)
-		maps.Copy(mergedReport.ErrorDist, report.ErrorDist)
-		maps.Copy(mergedReport.StatusCodeDist, report.StatusCodeDist)
+		mergedReport.Total += report.Total
+		for k, v := range mergedReport.ErrorDist {
+			mergedReport.ErrorDist[k] = report.ErrorDist[k] + v
+		}
+		for k, v := range mergedReport.StatusCodeDist {
+			mergedReport.StatusCodeDist[k] = report.StatusCodeDist[k] + v
+		}
 		mergedReport.Average = time.Duration(
 			(float64(mergedReport.Average)*float64(mergedReport.Count) + float64(report.Average)*float64(report.Count)) /
 				float64(mergedReport.Count+report.Count),
