@@ -326,6 +326,9 @@ func GroupLatencies(details []runner.ResultDetail, window time.Duration) map[tim
 func CalculatePercentiles(details map[time.Duration][]float64, p50 bool, p95 bool, p99 bool) []runner.DataPoint {
 	var dps []runner.DataPoint
 	for k, d := range details {
+		if len(d) == 0 {
+			dps = append(dps, runner.DataPoint{X: float64(k), Y: runner.DataPointAgg{P50: 0, P95: 0, P99: 0}})
+		}
 		dps = append(dps, runner.DataPoint{X: float64(k), Y: CalculatePercentile(d, p50, p95, p99)})
 	}
 	return dps
