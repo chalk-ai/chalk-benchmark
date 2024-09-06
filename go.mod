@@ -5,7 +5,7 @@ go 1.23
 require (
 	github.com/apache/arrow/go/v17 v17.0.0
 	github.com/chalk-ai/chalk-go v0.16.21
-	github.com/chalk-ai/ghz v0.1.17
+	github.com/chalk-ai/ghz v0.1.18
 	github.com/goccy/go-json v0.10.3
 	github.com/jhump/protoreflect v1.17.0
 	github.com/samber/lo v1.47.0
