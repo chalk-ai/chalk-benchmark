@@ -171,7 +171,11 @@ var rootCmd = &cobra.Command{
 
 		result = RunBenchmarks(benchmarkRunner)
 
-		PrintReport(outputFile, result, includeRequestMetadata)
+		PrintReport(result)
+		SaveReport(outputFile, result, includeRequestMetadata, ReportTypeHTML)
+		if jsonOutputFile != "" {
+			SaveReport(jsonOutputFile, result, includeRequestMetadata, ReportTypeJSON)
+		}
 	},
 }
 
@@ -203,6 +207,7 @@ var numConnections uint
 var concurrency uint
 var timeout time.Duration
 var outputFile string
+var jsonOutputFile string
 var scheduleFile string
 
 // environment & client parameters
@@ -254,6 +259,7 @@ func init() {
 	flags.UintVar(&concurrency, "concurrency", 16, "Number of workers (concurrency) for requests.")
 	flags.DurationVar(&timeout, "timeout", 20*time.Second, "Timeout for requests.")
 	flags.StringVar(&outputFile, "output_file", "result.html", "Output filename for the saved report.")
+	flags.StringVar(&jsonOutputFile, "json_output_file", "", "If specified, save the report as an additional file in JSON format.")
 	flags.StringVar(&token, "token", os.Getenv("CHALK_BENCHMARK_TOKEN"), "jwt to use for the request—if this is provided the client_id and client_secret will be ignored.")
 	flags.StringVar(&scheduleFile, "schedule_file", "", "Provide the schedule for the benchmark query as a JSON file.")
 
