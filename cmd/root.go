@@ -171,10 +171,10 @@ var rootCmd = &cobra.Command{
 
 		result = RunBenchmarks(benchmarkRunner)
 
-		PrintReport(outputFile, result, includeRequestMetadata, ReportTypeHTML)
-
+		PrintReport(result)
+		SaveReport(outputFile, result, includeRequestMetadata, ReportTypeHTML)
 		if jsonOutputFile != "" {
-			PrintReport(jsonOutputFile, result, includeRequestMetadata, ReportTypeJSON)
+			SaveReport(jsonOutputFile, result, includeRequestMetadata, ReportTypeJSON)
 		}
 	},
 }
