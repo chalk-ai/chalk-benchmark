@@ -9,7 +9,14 @@ import (
 	"strings"
 )
 
-func PrintReport(outputFilename string, result *runner.Report, includeRequestMetadata bool) {
+type ReportType string
+
+var (
+	ReportTypeHTML ReportType = "html"
+	ReportTypeJSON ReportType = "json"
+)
+
+func PrintReport(outputFilename string, result *runner.Report, includeRequestMetadata bool, reportType ReportType) {
 	fmt.Println("\nPrinting Report...")
 	processReport(result)
 	p := printer.ReportPrinter{
@@ -24,7 +31,7 @@ func PrintReport(outputFilename string, result *runner.Report, includeRequestMet
 	}
 
 	cd := CurDir()
-	reportFile := filepath.Join(cd, fmt.Sprintf("%s.html", strings.TrimSuffix(outputFilename, ".html")))
+	reportFile := filepath.Join(cd, fmt.Sprintf("%s.%s", strings.TrimSuffix(outputFilename, "."+string(reportType)), reportType))
 	outputFile, err := os.OpenFile(reportFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0660)
 	if err != nil {
 		fmt.Printf("Failed to open report file with error: %s\n", err)
@@ -41,7 +48,7 @@ func PrintReport(outputFilename string, result *runner.Report, includeRequestMet
 		Report: result,
 	}
 
-	err = htmlSaver.Print("html")
+	err = htmlSaver.Print(string(reportType))
 	if err != nil {
 		fmt.Printf("Failed to save report with error: %s\n", err)
 		os.Exit(1)
