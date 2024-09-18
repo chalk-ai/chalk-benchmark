@@ -2,47 +2,25 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/chalk-ai/chalk-benchmark/parse"
+	"github.com/chalk-ai/ghz/runner"
 	"github.com/samber/lo"
 	"github.com/spf13/pflag"
 	"math"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/chalk-ai/ghz/runner"
 
 	_ "github.com/goccy/go-json"
 	progress "github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"google.golang.org/protobuf/types/known/structpb"
 )
-
-const DefaultLoadRampStart = 2
 
 type PlannerOptions struct {
 	UseNativeSql          bool
 	StaticUnderscoreExprs bool
-}
-
-func parseInputsToMap(rawInputs map[string]string, processedMap map[string]*structpb.Value) {
-	// Iterate over the original map and copy the key-value pairs
-	for key, value := range rawInputs {
-		if _, err := strconv.Atoi(value); err == nil {
-			intValue, _ := strconv.ParseInt(value, 10, 64)
-			processedMap[key] = structpb.NewNumberValue(float64(intValue))
-		} else if _, err := strconv.ParseBool(value); err == nil {
-			boolValue, _ := strconv.ParseBool(value)
-			processedMap[key] = structpb.NewBoolValue(boolValue)
-		} else if _, err := strconv.ParseFloat(value, 64); err == nil {
-			floatValue, _ := strconv.ParseFloat(value, 64)
-			processedMap[key] = structpb.NewNumberValue(floatValue)
-		} else {
-			processedMap[key] = structpb.NewStringValue(value)
-		}
-	}
 }
 
 func processReport(result *runner.Report) {
@@ -105,7 +83,6 @@ var rootCmd = &cobra.Command{
 		}
 
 		globalHeaders := []runner.Option{
-			runner.WithSkipTLSVerify(true),
 			runner.WithMetadata(authHeaders),
 			runner.WithReflectionMetadata(authHeaders),
 			runner.WithAsync(true),
@@ -134,13 +111,13 @@ var rootCmd = &cobra.Command{
 				scheduleFile,
 			)
 		case "query_file":
-			onlineQueryContext := ParseOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, tags)
-			records, err := ReadParquetFile(inputFile)
+			onlineQueryContext := parse.ParseOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, tags)
+			records, err := parse.ReadParquetFile(inputFile)
 			if err != nil {
 				fmt.Printf("Failed to read parquet file with err: %s\n", err)
 				os.Exit(1)
 			}
-			queryOutputs := ParseOutputs(output)
+			queryOutputs := parse.ParseOutputs(output)
 			benchmarkRunner = BenchmarkQueryFromFile(
 				grpcHost,
 				globalHeaders,
@@ -153,9 +130,9 @@ var rootCmd = &cobra.Command{
 				scheduleFile,
 			)
 		case "query":
-			queryInputs := ParseInputs(inputStr, inputNum, input)
-			queryOutputs := ParseOutputs(output)
-			onlineQueryContext := ParseOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, tags)
+			queryInputs := parse.ParseInputs(inputStr, inputNum, input)
+			queryOutputs := parse.ParseOutputs(output)
+			onlineQueryContext := parse.ParseOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, tags)
 			benchmarkRunner = BenchmarkQuery(
 				grpcHost,
 				globalHeaders,
@@ -190,6 +167,9 @@ func normalizeFlagNames(_ *pflag.FlagSet, name string) pflag.NormalizedName {
 	switch name {
 	case "host":
 		name = "api-host"
+		break
+	case "insecure-query-host":
+		name = "insecure"
 		break
 	default:
 		name = strings.Replace(name, "_", "-", -1)
@@ -264,9 +244,9 @@ func init() {
 	flags.StringVar(&scheduleFile, "schedule_file", "", "Provide the schedule for the benchmark query as a JSON file.")
 
 	// environment & client parameters
-	flags.StringVar(&host, "host", "https://api.chalk.ai", "API server url—in host cases, this default will work.")
+	flags.StringVar(&host, "api-host", "https://api.chalk.ai", "API server url—in host cases, this default will work.")
 	flags.StringVar(&queryHost, "query_host", "", "query server url—in host cases, this default will work.")
-	flags.BoolVar(&insecureQueryHost, "insecure_query_host", false, "whether to run the client without TLS—can be useful when making requests directly to the engine.")
+	flags.BoolVar(&insecureQueryHost, "insecure", false, "whether to run the client without TLS—can be useful when making requests directly to the engine.")
 	flags.StringVar(&environment, "environment", "", "Environment for the client.")
 	flags.StringVarP(&clientId, "client_id", "c", os.Getenv("CHALK_CLIENT_ID"), "client_id for your environment.")
 	flags.StringVarP(&clientSecret, "client_secret", "s", os.Getenv("CHALK_CLIENT_SECRET"), "client_secret for your environment.")

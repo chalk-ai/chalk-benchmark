@@ -9,6 +9,14 @@ import (
 	"strings"
 )
 
+func CurDir() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	return cwd
+}
+
 type ReportType string
 
 var (

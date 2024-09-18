@@ -1,4 +1,4 @@
-package cmd
+package parse
 
 import (
 	"fmt"
@@ -11,13 +11,7 @@ import (
 	"time"
 )
 
-func CurDir() string {
-	cwd, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-	return cwd
-}
+const DefaultLoadRampStart = 2
 
 type StepPacer struct {
 	StepSize     int64  `json:"step_size"`
@@ -55,7 +49,7 @@ type QueryRun struct {
 	Type     string
 }
 
-func ParseScheduleFile(scheduleFile string) []QueryRun {
+func ParseScheduleFile(scheduleFile string, rampDuration time.Duration) []QueryRun {
 	var queryRuns []QueryRun
 	jsonFileData := ReadJSONFile(scheduleFile)
 
@@ -136,7 +130,7 @@ func ParseScheduleFile(scheduleFile string) []QueryRun {
 
 func QueryRateOptions(rps uint, benchmarkDuration time.Duration, rampDuration time.Duration, totalRequests uint, scheduleFile string) []QueryRun {
 	if scheduleFile != "" {
-		return ParseScheduleFile(scheduleFile)
+		return ParseScheduleFile(scheduleFile, rampDuration)
 	}
 	queryRunOptions := []runner.Option{
 		runner.WithRPS(rps),
