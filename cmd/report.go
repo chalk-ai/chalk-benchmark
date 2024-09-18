@@ -17,7 +17,14 @@ func CurDir() string {
 	return cwd
 }
 
-func PrintReport(outputFilename string, result *runner.Report, includeRequestMetadata bool) {
+type ReportType string
+
+var (
+	ReportTypeHTML ReportType = "html"
+	ReportTypeJSON ReportType = "json"
+)
+
+func PrintReport(result *runner.Report) {
 	fmt.Println("\nPrinting Report...")
 	processReport(result)
 	p := printer.ReportPrinter{
@@ -30,9 +37,14 @@ func PrintReport(outputFilename string, result *runner.Report, includeRequestMet
 		fmt.Printf("Failed to print report with error: %s\n", err)
 		os.Exit(1)
 	}
+}
 
-	cd := CurDir()
-	reportFile := filepath.Join(cd, fmt.Sprintf("%s.html", strings.TrimSuffix(outputFilename, ".html")))
+func SaveReport(outputFilename string, result *runner.Report, includeRequestMetadata bool, reportType ReportType) {
+	filenameNoPrefix := strings.TrimSuffix(outputFilename, "."+string(reportType))
+	reportFile := filepath.Join(
+		CurDir(),
+		fmt.Sprintf("%s.%s", filenameNoPrefix, reportType),
+	)
 	outputFile, err := os.OpenFile(reportFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0660)
 	if err != nil {
 		fmt.Printf("Failed to open report file with error: %s\n", err)
@@ -44,12 +56,12 @@ func PrintReport(outputFilename string, result *runner.Report, includeRequestMet
 		result.Options.Metadata = nil
 	}
 
-	htmlSaver := printer.ReportPrinter{
+	fileSaver := printer.ReportPrinter{
 		Out:    outputFile,
 		Report: result,
 	}
 
-	err = htmlSaver.Print("html")
+	err = fileSaver.Print(string(reportType))
 	if err != nil {
 		fmt.Printf("Failed to save report with error: %s\n", err)
 		os.Exit(1)
