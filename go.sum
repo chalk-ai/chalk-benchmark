@@ -33,10 +33,6 @@ github.com/census-instrumentation/opencensus-proto v0.4.1 h1:iKLQ0xPNFxR/2hzXZMr
 github.com/census-instrumentation/opencensus-proto v0.4.1/go.mod h1:4T9NM4+4Vw91VeyqjLS6ao50K5bOcLKN6Q42XnYaRYw=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
-github.com/chalk-ai/chalk-go v0.16.21 h1:3RN7qW2UTi1AbGqmSITXGbmunnqvzm/yL8nj/SVanRE=
-github.com/chalk-ai/chalk-go v0.16.21/go.mod h1:wr4z7NQP8Hg2xuMGvLMY/Clf6JCfvShb/US0esGg1LM=
-github.com/chalk-ai/ghz v0.1.19 h1:la/Ty39Vxj3N699EqldBdKtbG99U0xEbW/DgYlyGlfc=
-github.com/chalk-ai/ghz v0.1.19/go.mod h1:N28yx6mY35alo2DRgjUl08VhUlvgckdaPZFVbIx6DlY=
 github.com/cncf/xds/go v0.0.0-20240905190251-b4127c9b8d78 h1:QVw89YDxXxEe+l8gU8ETbOasdwEV+avkR75ZzsVV9WI=
 github.com/cncf/xds/go v0.0.0-20240905190251-b4127c9b8d78/go.mod h1:W+zGtBO5Y1IgJhy4+A9GOqVhqLpfZi+vwmdNXUehLA8=
 github.com/cockroachdb/errors v1.11.3 h1:5bA+k2Y6r+oz/6Z/RFlNeVCesGARKuC6YymtcDrbC/I=

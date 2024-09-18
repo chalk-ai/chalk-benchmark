@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/chalk-ai/chalk-benchmark/parse"
 	commonv1 "github.com/chalk-ai/chalk-go/gen/chalk/common/v1"
 	enginev1 "github.com/chalk-ai/chalk-go/gen/chalk/engine/v1"
 	"github.com/chalk-ai/chalk-go/gen/chalk/engine/v1/enginev1connect"
@@ -13,15 +14,17 @@ import (
 	"io"
 	"math"
 	"os"
+	"os/signal"
 	"slices"
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
 type BenchmarkFunction struct {
-	F        func() (*runner.Report, error)
+	F        *runner.Requester
 	Duration time.Duration
 	Type     string
 }
@@ -32,21 +35,28 @@ func BenchmarkPing(grpcHost string, authHeaders []runner.Option) []BenchmarkFunc
 		fmt.Printf("Failed to marshal ping request with err: %s\n", err)
 		os.Exit(1)
 	}
+	runConfig, err := runner.NewConfig(
+		strings.TrimPrefix(enginev1connect.QueryServicePingProcedure, "/"),
+		grpcHost,
+		slices.Concat(
+			authHeaders,
+			[]runner.Option{
+				runner.WithRPS(1),
+				runner.WithTotalRequests(1),
+				runner.WithBinaryData(pingRequest),
+			},
+		)...,
+	)
+	if err != nil {
+		fmt.Printf("Failed to create run config with err: %s\n", err)
+		os.Exit(1)
+	}
+	req, err := runner.NewRequester(
+		runConfig,
+	)
+
 	return []BenchmarkFunction{{
-		F: func() (*runner.Report, error) {
-			return runner.Run(
-				strings.TrimPrefix(enginev1connect.QueryServicePingProcedure, "/"),
-				grpcHost,
-				slices.Concat(
-					authHeaders,
-					[]runner.Option{
-						runner.WithRPS(1),
-						runner.WithTotalRequests(1),
-						runner.WithBinaryData(pingRequest),
-					},
-				)...,
-			)
-		},
+		F:        req,
 		Duration: time.Duration(0),
 	}}
 }
@@ -63,7 +73,7 @@ func BenchmarkQuery(
 	scheduleFile string,
 ) []BenchmarkFunction {
 	// total requests calculated from duration and RPS
-	queryOptions := QueryRateOptions(rps, benchmarkDuration, rampDuration, 0, scheduleFile)
+	queryOptions := parse.QueryRateOptions(rps, benchmarkDuration, rampDuration, 0, scheduleFile)
 
 	oqr := commonv1.OnlineQueryRequest{
 		Inputs:  queryInputs,
@@ -79,20 +89,29 @@ func BenchmarkQuery(
 	}
 	var bfs []BenchmarkFunction
 	for _, queryOption := range queryOptions {
+		runConfig, err := runner.NewConfig(
+			strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryProcedure, "/"),
+			grpcHost,
+			slices.Concat(
+				globalHeaders,
+				queryOption.Options,
+				[]runner.Option{
+					runner.WithBinaryData(binaryData),
+				},
+			)...,
+		)
+		if err != nil {
+			fmt.Printf("Failed to create run config with err: %s\n", err)
+			os.Exit(1)
+		}
+		req, err := runner.NewRequester(runConfig)
+		if err != nil {
+			fmt.Printf("Failed to create requester with err: %s\n", err)
+			os.Exit(1)
+		}
+
 		bfs = append(bfs, BenchmarkFunction{
-			F: func() (*runner.Report, error) {
-				return runner.Run(
-					strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryProcedure, "/"),
-					grpcHost,
-					slices.Concat(
-						globalHeaders,
-						queryOption.Options,
-						[]runner.Option{
-							runner.WithBinaryData(binaryData),
-						},
-					)...,
-				)
-			},
+			F:        req,
 			Duration: queryOption.Duration,
 			Type:     queryOption.Type,
 		})
@@ -103,7 +122,7 @@ func BenchmarkQuery(
 func BenchmarkQueryFromFile(
 	grpcHost string,
 	globalHeaders []runner.Option,
-	records []Record,
+	records []parse.Record,
 	outputs []*commonv1.OutputExpr,
 	onlineQueryContext *commonv1.OnlineQueryContext,
 	rps uint,
@@ -112,7 +131,7 @@ func BenchmarkQueryFromFile(
 	scheduleFile string,
 ) []BenchmarkFunction {
 	// total requests calculated from duration and RPS
-	queryOptions := QueryRateOptions(rps, benchmarkDuration, rampDuration, uint(len(records)), scheduleFile)
+	queryOptions := parse.QueryRateOptions(rps, benchmarkDuration, rampDuration, uint(len(records)), scheduleFile)
 
 	// binaryData, err := proto.Marshal(&onlineQueryContext)
 	binaryDataFunc := func(mtd *desc.MethodDescriptor, cd *runner.CallData) []byte {
@@ -133,20 +152,28 @@ func BenchmarkQueryFromFile(
 	}
 	var bfs []BenchmarkFunction
 	for _, queryOption := range queryOptions {
+		runConfig, err := runner.NewConfig(
+			strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryProcedure, "/"),
+			grpcHost,
+			slices.Concat(
+				globalHeaders,
+				queryOption.Options,
+				[]runner.Option{
+					runner.WithBinaryDataFunc(binaryDataFunc),
+				},
+			)...,
+		)
+		if err != nil {
+			fmt.Printf("Failed to create run config with err: %s\n", err)
+			os.Exit(1)
+		}
+		req, err := runner.NewRequester(runConfig)
+		if err != nil {
+			fmt.Printf("Failed to create requester with err: %s\n", err)
+			os.Exit(1)
+		}
 		bfs = append(bfs, BenchmarkFunction{
-			F: func() (*runner.Report, error) {
-				return runner.Run(
-					strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryProcedure, "/"),
-					grpcHost,
-					slices.Concat(
-						globalHeaders,
-						queryOption.Options,
-						[]runner.Option{
-							runner.WithBinaryDataFunc(binaryDataFunc),
-						},
-					)...,
-				)
-			},
+			F:        req,
 			Duration: queryOption.Duration,
 			Type:     queryOption.Type,
 		})
@@ -164,7 +191,7 @@ func BenchmarkUploadFeatures(
 	scheduleFile string,
 ) []BenchmarkFunction {
 	file, err := os.Open(uploadFeaturesFile)
-	queryOptions := QueryRateOptions(rps, benchmarkDuration, rampDuration, 0, scheduleFile)
+	queryOptions := parse.QueryRateOptions(rps, benchmarkDuration, rampDuration, 0, scheduleFile)
 	if err != nil {
 		fmt.Printf("Failed to open file with err: %s\n", err)
 		os.Exit(1)
@@ -189,20 +216,29 @@ func BenchmarkUploadFeatures(
 
 	var bfs []BenchmarkFunction
 	for _, queryOption := range queryOptions {
+		runConfig, err := runner.NewConfig(
+			strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryProcedure, "/"),
+			grpcHost,
+			slices.Concat(
+				globalHeaders,
+				queryOption.Options,
+				[]runner.Option{
+					runner.WithBinaryData(binaryData),
+				},
+			)...,
+		)
+		if err != nil {
+			fmt.Printf("Failed to create run config with err: %s\n", err)
+			os.Exit(1)
+		}
+		req, err := runner.NewRequester(runConfig)
+		if err != nil {
+			fmt.Printf("Failed to create requester with err: %s\n", err)
+			os.Exit(1)
+		}
+
 		bfs = append(bfs, BenchmarkFunction{
-			F: func() (*runner.Report, error) {
-				return runner.Run(
-					strings.TrimPrefix(enginev1connect.QueryServiceUploadFeaturesBulkProcedure, "/"),
-					grpcHost,
-					slices.Concat(
-						globalHeaders,
-						queryOption.Options,
-						[]runner.Option{
-							runner.WithBinaryData(binaryData),
-						},
-					)...,
-				)
-			},
+			F:        req,
 			Duration: queryOption.Duration,
 		})
 	}
@@ -221,7 +257,20 @@ func RunBenchmarks(bfs []BenchmarkFunction) *runner.Report {
 			go pbar(bf.Duration, lo.Ternary(i == 0, rampDuration, time.Duration(0)), &wg, bf.Type)
 		}
 
-		result, err := bf.F()
+		c := make(chan os.Signal)
+		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+		go func(req *runner.Requester) {
+			<-c
+			req.Stop(runner.ReasonCancel)
+			os.Exit(1)
+		}(bf.F)
+
+		result, err := bf.F.Run()
+
+		if err != nil {
+			fmt.Printf("Failed to run request with err: %s\n", err)
+			os.Exit(1)
+		}
 
 		if !noProgress && !test {
 			wg.Wait()

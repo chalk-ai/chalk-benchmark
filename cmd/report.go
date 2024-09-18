@@ -9,6 +9,14 @@ import (
 	"strings"
 )
 
+func CurDir() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	return cwd
+}
+
 func PrintReport(outputFilename string, result *runner.Report, includeRequestMetadata bool) {
 	fmt.Println("\nPrinting Report...")
 	processReport(result)

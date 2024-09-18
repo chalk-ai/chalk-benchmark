@@ -4,7 +4,7 @@ go 1.23
 
 require (
 	github.com/apache/arrow/go/v17 v17.0.0
-	github.com/chalk-ai/chalk-go v0.16.21
+	github.com/chalk-ai/chalk-go v0.16.24-0.20240918004725-bf0e2f738cb1
 	github.com/chalk-ai/ghz v0.1.19
 	github.com/goccy/go-json v0.10.3
 	github.com/jhump/protoreflect v1.17.0
@@ -98,3 +98,6 @@ require (
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/chalk-ai/chalk-go => ../chalk-go
+replace github.com/chalk-ai/ghz => ../ghz

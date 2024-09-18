@@ -2,47 +2,25 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/chalk-ai/chalk-benchmark/parse"
+	"github.com/chalk-ai/ghz/runner"
 	"github.com/samber/lo"
 	"github.com/spf13/pflag"
 	"math"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/chalk-ai/ghz/runner"
 
 	_ "github.com/goccy/go-json"
 	progress "github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"google.golang.org/protobuf/types/known/structpb"
 )
-
-const DefaultLoadRampStart = 2
 
 type PlannerOptions struct {
 	UseNativeSql          bool
 	StaticUnderscoreExprs bool
-}
-
-func parseInputsToMap(rawInputs map[string]string, processedMap map[string]*structpb.Value) {
-	// Iterate over the original map and copy the key-value pairs
-	for key, value := range rawInputs {
-		if _, err := strconv.Atoi(value); err == nil {
-			intValue, _ := strconv.ParseInt(value, 10, 64)
-			processedMap[key] = structpb.NewNumberValue(float64(intValue))
-		} else if _, err := strconv.ParseBool(value); err == nil {
-			boolValue, _ := strconv.ParseBool(value)
-			processedMap[key] = structpb.NewBoolValue(boolValue)
-		} else if _, err := strconv.ParseFloat(value, 64); err == nil {
-			floatValue, _ := strconv.ParseFloat(value, 64)
-			processedMap[key] = structpb.NewNumberValue(floatValue)
-		} else {
-			processedMap[key] = structpb.NewStringValue(value)
-		}
-	}
 }
 
 func processReport(result *runner.Report) {
@@ -134,13 +112,13 @@ var rootCmd = &cobra.Command{
 				scheduleFile,
 			)
 		case "query_file":
-			onlineQueryContext := ParseOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, tags)
-			records, err := ReadParquetFile(inputFile)
+			onlineQueryContext := parse.ParseOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, tags)
+			records, err := parse.ReadParquetFile(inputFile)
 			if err != nil {
 				fmt.Printf("Failed to read parquet file with err: %s\n", err)
 				os.Exit(1)
 			}
-			queryOutputs := ParseOutputs(output)
+			queryOutputs := parse.ParseOutputs(output)
 			benchmarkRunner = BenchmarkQueryFromFile(
 				grpcHost,
 				globalHeaders,
@@ -153,9 +131,9 @@ var rootCmd = &cobra.Command{
 				scheduleFile,
 			)
 		case "query":
-			queryInputs := ParseInputs(inputStr, inputNum, input)
-			queryOutputs := ParseOutputs(output)
-			onlineQueryContext := ParseOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, tags)
+			queryInputs := parse.ParseInputs(inputStr, inputNum, input)
+			queryOutputs := parse.ParseOutputs(output)
+			onlineQueryContext := parse.ParseOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, tags)
 			benchmarkRunner = BenchmarkQuery(
 				grpcHost,
 				globalHeaders,
