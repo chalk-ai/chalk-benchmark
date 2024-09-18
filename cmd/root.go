@@ -168,6 +168,9 @@ func normalizeFlagNames(_ *pflag.FlagSet, name string) pflag.NormalizedName {
 	case "host":
 		name = "api-host"
 		break
+	case "insecure-query-host":
+		name = "insecure"
+		break
 	default:
 		name = strings.Replace(name, "_", "-", -1)
 		break
@@ -241,7 +244,7 @@ func init() {
 	flags.StringVar(&scheduleFile, "schedule_file", "", "Provide the schedule for the benchmark query as a JSON file.")
 
 	// environment & client parameters
-	flags.StringVar(&host, "host", "https://api.chalk.ai", "API server url—in host cases, this default will work.")
+	flags.StringVar(&host, "api-host", "https://api.chalk.ai", "API server url—in host cases, this default will work.")
 	flags.StringVar(&queryHost, "query_host", "", "query server url—in host cases, this default will work.")
 	flags.BoolVar(&insecureQueryHost, "insecure", false, "whether to run the client without TLS—can be useful when making requests directly to the engine.")
 	flags.StringVar(&environment, "environment", "", "Environment for the client.")
