@@ -5,7 +5,7 @@ import (
 )
 
 func TestParquetInputFile(t *testing.T) {
-	records, err := ReadParquetFile("testdata/test.parquet")
+	records, err := ReadParquetFile("../testdata/test.parquet")
 	if err != nil {
 		t.Fatal(err)
 	}

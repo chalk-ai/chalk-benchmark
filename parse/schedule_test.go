@@ -10,5 +10,5 @@ func TestJSONParser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to parse duration: %s", err)
 	}
-	ParseScheduleFile("schedule.json", duration)
+	ParseScheduleFile("../testdata/schedule.json", duration)
 }
