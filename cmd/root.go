@@ -83,7 +83,6 @@ var rootCmd = &cobra.Command{
 		}
 
 		globalHeaders := []runner.Option{
-			runner.WithSkipTLSVerify(true),
 			runner.WithMetadata(authHeaders),
 			runner.WithReflectionMetadata(authHeaders),
 			runner.WithAsync(true),
@@ -244,7 +243,7 @@ func init() {
 	// environment & client parameters
 	flags.StringVar(&host, "host", "https://api.chalk.ai", "API server url—in host cases, this default will work.")
 	flags.StringVar(&queryHost, "query_host", "", "query server url—in host cases, this default will work.")
-	flags.BoolVar(&insecureQueryHost, "insecure_query_host", false, "whether to run the client without TLS—can be useful when making requests directly to the engine.")
+	flags.BoolVar(&insecureQueryHost, "insecure", false, "whether to run the client without TLS—can be useful when making requests directly to the engine.")
 	flags.StringVar(&environment, "environment", "", "Environment for the client.")
 	flags.StringVarP(&clientId, "client_id", "c", os.Getenv("CHALK_CLIENT_ID"), "client_id for your environment.")
 	flags.StringVarP(&clientSecret, "client_secret", "s", os.Getenv("CHALK_CLIENT_SECRET"), "client_secret for your environment.")
