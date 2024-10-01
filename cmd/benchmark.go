@@ -121,7 +121,7 @@ func BenchmarkQuery(
 func BenchmarkQueryFromFile(
 	grpcHost string,
 	globalHeaders []runner.Option,
-	records []parse.Record,
+	records [][]byte,
 	outputs []*commonv1.OutputExpr,
 	onlineQueryContext *commonv1.OnlineQueryContext,
 	rps uint,
