@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/chalk-ai/chalk-benchmark/parse"
+	"github.com/chalk-ai/chalk-benchmark/report"
 	"github.com/chalk-ai/ghz/runner"
 	"github.com/samber/lo"
 	"github.com/spf13/pflag"
@@ -21,12 +22,6 @@ import (
 type PlannerOptions struct {
 	UseNativeSql          bool
 	StaticUnderscoreExprs bool
-}
-
-func processReport(result *runner.Report) {
-	// Correct Total Time & RPS calculations to exclude ramp up time
-	result.Total = result.Total - rampDuration
-	result.Rps = float64(result.Count) / result.Total.Seconds()
 }
 
 func pbar(t time.Duration, rampDuration time.Duration, wg *sync.WaitGroup, stepDescription string) {
@@ -148,10 +143,10 @@ var rootCmd = &cobra.Command{
 
 		result = RunBenchmarks(benchmarkRunner)
 
-		PrintReport(result)
-		SaveReport(outputFile, result, includeRequestMetadata, ReportTypeHTML)
+		report.PrintReport(result, rampDuration)
+		report.SaveReport(outputFile, result, includeRequestMetadata, report.ReportTypeHTML)
 		if jsonOutputFile != "" {
-			SaveReport(jsonOutputFile, result, includeRequestMetadata, ReportTypeJSON)
+			report.SaveReport(jsonOutputFile, result, includeRequestMetadata, report.ReportTypeJSON)
 		}
 	},
 }
