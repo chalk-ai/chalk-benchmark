@@ -10,7 +10,6 @@ import (
 	"github.com/jhump/protoreflect/desc"
 	"github.com/samber/lo"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/structpb"
 	"io"
 	"math"
 	"os"
@@ -64,7 +63,7 @@ func BenchmarkPing(grpcHost string, authHeaders []runner.Option) []BenchmarkFunc
 func BenchmarkQuery(
 	grpcHost string,
 	globalHeaders []runner.Option,
-	queryInputs map[string]*structpb.Value,
+	queryInputs []byte,
 	queryOutputs []*commonv1.OutputExpr,
 	onlineQueryContext *commonv1.OnlineQueryContext,
 	rps uint,
@@ -75,22 +74,22 @@ func BenchmarkQuery(
 	// total requests calculated from duration and RPS
 	queryOptions := parse.QueryRateOptions(rps, benchmarkDuration, rampDuration, 0, scheduleFile)
 
-	oqr := commonv1.OnlineQueryRequest{
-		Inputs:  queryInputs,
-		Outputs: queryOutputs,
-		Context: onlineQueryContext,
+	oqr := commonv1.OnlineQueryBulkRequest{
+		InputsFeather: queryInputs,
+		Outputs:       queryOutputs,
+		Context:       onlineQueryContext,
 	}
 
 	binaryData, err := proto.Marshal(&oqr)
 
 	if err != nil {
-		fmt.Printf("Failed to marshal online query request with inputs: '%v', outputs: '%v', and context '%v'\n", queryInputs, queryOutputs, onlineQueryContext)
+		fmt.Printf("Failed to marshal online query request with outputs: '%v', and context '%v'\n", queryOutputs, onlineQueryContext)
 		os.Exit(1)
 	}
 	var bfs []BenchmarkFunction
 	for _, queryOption := range queryOptions {
 		runConfig, err := runner.NewConfig(
-			strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryProcedure, "/"),
+			strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryBulkProcedure, "/"),
 			grpcHost,
 			slices.Concat(
 				globalHeaders,
@@ -136,10 +135,11 @@ func BenchmarkQueryFromFile(
 	// binaryData, err := proto.Marshal(&onlineQueryContext)
 	binaryDataFunc := func(mtd *desc.MethodDescriptor, cd *runner.CallData) []byte {
 		request := records[cd.RequestNumber%int64(len(records))]
-		oqr := commonv1.OnlineQueryRequest{
-			Inputs:  request,
-			Outputs: outputs,
-			Context: onlineQueryContext,
+
+		oqr := commonv1.OnlineQueryBulkRequest{
+			InputsFeather: request,
+			Outputs:       outputs,
+			Context:       onlineQueryContext,
 		}
 		value, err := proto.Marshal(
 			&oqr,
@@ -153,7 +153,7 @@ func BenchmarkQueryFromFile(
 	var bfs []BenchmarkFunction
 	for _, queryOption := range queryOptions {
 		runConfig, err := runner.NewConfig(
-			strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryProcedure, "/"),
+			strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryBulkProcedure, "/"),
 			grpcHost,
 			slices.Concat(
 				globalHeaders,
@@ -217,7 +217,7 @@ func BenchmarkUploadFeatures(
 	var bfs []BenchmarkFunction
 	for _, queryOption := range queryOptions {
 		runConfig, err := runner.NewConfig(
-			strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryProcedure, "/"),
+			strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryBulkProcedure, "/"),
 			grpcHost,
 			slices.Concat(
 				globalHeaders,
