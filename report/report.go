@@ -1,4 +1,4 @@
-package cmd
+package report
 
 import (
 	"fmt"
@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 func CurDir() string {
@@ -24,9 +25,15 @@ var (
 	ReportTypeJSON ReportType = "json"
 )
 
-func PrintReport(result *runner.Report) {
+func processReport(result *runner.Report, rampDuration time.Duration) {
+	// Correct Total Time & RPS calculations to exclude ramp up time
+	result.Total = result.Total - rampDuration
+	result.Rps = float64(result.Count) / result.Total.Seconds()
+}
+
+func PrintReport(result *runner.Report, rampDuration time.Duration) {
 	fmt.Println("\nPrinting Report...")
-	processReport(result)
+	processReport(result, rampDuration)
 	p := printer.ReportPrinter{
 		Out:    os.Stdout,
 		Report: result,

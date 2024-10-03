@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/chalk-ai/chalk-benchmark/parse"
+	"github.com/chalk-ai/chalk-benchmark/report"
 	"github.com/chalk-ai/ghz/runner"
 	"github.com/samber/lo"
 	"github.com/spf13/pflag"
@@ -21,12 +22,6 @@ import (
 type PlannerOptions struct {
 	UseNativeSql          bool
 	StaticUnderscoreExprs bool
-}
-
-func processReport(result *runner.Report) {
-	// Correct Total Time & RPS calculations to exclude ramp up time
-	result.Total = result.Total - rampDuration
-	result.Rps = float64(result.Count) / result.Total.Seconds()
 }
 
 func pbar(t time.Duration, rampDuration time.Duration, wg *sync.WaitGroup, stepDescription string) {
@@ -111,13 +106,13 @@ var rootCmd = &cobra.Command{
 				scheduleFile,
 			)
 		case "query_file":
-			onlineQueryContext := parse.ParseOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, tags)
+			onlineQueryContext := parse.ProcessOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, tags)
 			records, err := parse.ReadParquetFile(inputFile)
 			if err != nil {
 				fmt.Printf("Failed to read parquet file with err: %s\n", err)
 				os.Exit(1)
 			}
-			queryOutputs := parse.ParseOutputs(output)
+			queryOutputs := parse.ProcessOutputs(output)
 			benchmarkRunner = BenchmarkQueryFromFile(
 				grpcHost,
 				globalHeaders,
@@ -130,9 +125,9 @@ var rootCmd = &cobra.Command{
 				scheduleFile,
 			)
 		case "query":
-			queryInputs := parse.ParseInputs(inputStr, inputNum, input)
-			queryOutputs := parse.ParseOutputs(output)
-			onlineQueryContext := parse.ParseOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, tags)
+			queryInputs := parse.ProcessInputs(inputStr, inputNum, input)
+			queryOutputs := parse.ProcessOutputs(output)
+			onlineQueryContext := parse.ProcessOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, tags)
 			benchmarkRunner = BenchmarkQuery(
 				grpcHost,
 				globalHeaders,
@@ -148,10 +143,10 @@ var rootCmd = &cobra.Command{
 
 		result = RunBenchmarks(benchmarkRunner)
 
-		PrintReport(result)
-		SaveReport(outputFile, result, includeRequestMetadata, ReportTypeHTML)
+		report.PrintReport(result, rampDuration)
+		report.SaveReport(outputFile, result, includeRequestMetadata, report.ReportTypeHTML)
 		if jsonOutputFile != "" {
-			SaveReport(jsonOutputFile, result, includeRequestMetadata, ReportTypeJSON)
+			report.SaveReport(jsonOutputFile, result, includeRequestMetadata, report.ReportTypeJSON)
 		}
 	},
 }
