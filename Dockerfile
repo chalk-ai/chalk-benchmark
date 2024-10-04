@@ -17,7 +17,7 @@ RUN --mount=type=cache,target=/gomod-cache \
     -ldflags="-X 'github.com/chalk-ai/chalk-private/chalk-benchmark/info.Sha=$COMMIT_SHA'"
 
 # Run stage
-FROM --platform=linux/amd64 debian:bookworm-slim
+FROM --platform=linux/amd64 alpine
 
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
