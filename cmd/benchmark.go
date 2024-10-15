@@ -315,6 +315,7 @@ func mergeReports(reports []*runner.Report) *runner.Report {
 	for _, d := range mergedReport.Details {
 		okLats = append(okLats, d.Latency.Seconds())
 	}
+  sort.Slice(okLats, func(i, j int) bool { return okLats[i] < okLats[j] } )
 	mergedReport.LatencyDistribution = runner.Latencies(okLats)
 	idx := slices.IndexFunc(mergedReport.LatencyDistribution, func(l runner.LatencyDistribution) bool {
 		return l.Percentage == 99
