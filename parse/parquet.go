@@ -8,7 +8,7 @@ import (
 	"github.com/apache/arrow/go/v17/parquet/pqarrow"
 )
 
-func ReadParquetFile(featuresFile string) ([][]byte, error) {
+func ReadParquetFile(featuresFile string, chunkSize int64) ([][]byte, error) {
 	file, err := parquetFile.OpenParquetFile(featuresFile, false)
 	defer file.Close()
 	if err != nil {
@@ -27,7 +27,7 @@ func ReadParquetFile(featuresFile string) ([][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	tr := array.NewTableReader(table, 1)
+	tr := array.NewTableReader(table, chunkSize)
 	for tr.Next() {
 		record := tr.Record()
 		bytes, err := recordToBytes(record)

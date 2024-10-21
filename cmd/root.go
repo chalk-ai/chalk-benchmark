@@ -107,11 +107,12 @@ var rootCmd = &cobra.Command{
 			)
 		case "query_file":
 			onlineQueryContext := parse.ProcessOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, tags)
-			records, err := parse.ReadParquetFile(inputFile)
+			records, err := parse.ReadParquetFile(inputFile, chunkSize)
 			if err != nil {
 				fmt.Printf("Failed to read parquet file with err: %s\n", err)
 				os.Exit(1)
 			}
+
 			queryOutputs := parse.ProcessOutputs(output)
 			benchmarkRunner = BenchmarkQueryFromFile(
 				grpcHost,
@@ -184,6 +185,7 @@ var timeout time.Duration
 var outputFile string
 var jsonOutputFile string
 var scheduleFile string
+var chunkSize int64
 
 // environment & client parameters
 var host string
@@ -237,6 +239,7 @@ func init() {
 	flags.StringVar(&jsonOutputFile, "json_output_file", "", "If specified, save the report as an additional file in JSON format.")
 	flags.StringVar(&token, "token", os.Getenv("CHALK_BENCHMARK_TOKEN"), "jwt to use for the request—if this is provided the client_id and client_secret will be ignored.")
 	flags.StringVar(&scheduleFile, "schedule_file", "", "Provide the schedule for the benchmark query as a JSON file.")
+	flags.Int64Var(&chunkSize, "chunk_size", 1, "Only matters if a parquet input file has been provided. Runs queries on chunks of the parquet data.")
 
 	// environment & client parameters
 	flags.StringVar(&host, "api-host", "https://api.chalk.ai", "API server url—in host cases, this default will work.")
