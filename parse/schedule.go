@@ -136,13 +136,9 @@ func QueryRateOptions(rps uint, benchmarkDuration time.Duration, rampDuration ti
 		runner.WithRPS(rps),
 	}
 	var durationSeconds uint
-	if totalRequests == 0 {
-		durationSeconds = uint(math.Ceil(float64(benchmarkDuration / time.Second)))
-		totalRequests = uint(float64(durationSeconds * rps))
-	} else {
-		durationSeconds = uint(math.Ceil(float64(totalRequests) / float64(rps)))
-		benchmarkDuration = time.Duration(durationSeconds) * time.Second
-	}
+  durationSeconds = uint(math.Ceil(float64(benchmarkDuration / time.Second)))
+  totalRequests = uint(float64(durationSeconds * rps))
+
 	if rampDuration != time.Duration(0) {
 		rampDurationSeconds := uint(math.Floor(float64(rampDuration / time.Second)))
 
