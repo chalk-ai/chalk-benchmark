@@ -17,6 +17,7 @@ func TestCliInputsBasic(t *testing.T) {
 		},
 		map[string]int64{},
 		map[string]string{},
+		1,
 	)
 	schema := record.Schema()
 
@@ -48,6 +49,7 @@ func TestCliInputsOverride(t *testing.T) {
 		map[string]string{
 			"strExplicit": "2",
 		},
+		1,
 	)
 	schema := record.Schema()
 
