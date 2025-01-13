@@ -126,7 +126,7 @@ var rootCmd = &cobra.Command{
 				scheduleFile,
 			)
 		case "query":
-			queryInputs := parse.ProcessInputs(inputStr, inputNum, input)
+			queryInputs := parse.ProcessInputs(inputStr, inputNum, input, chunkSize)
 			queryOutputs := parse.ProcessOutputs(output)
 			onlineQueryContext := parse.ProcessOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, tags)
 			benchmarkRunner = BenchmarkQuery(
@@ -167,6 +167,8 @@ func normalizeFlagNames(_ *pflag.FlagSet, name string) pflag.NormalizedName {
 	case "insecure-query-host":
 		name = "insecure"
 		break
+	case "batch-size":
+		name = "chunk-size"
 	default:
 		name = strings.Replace(name, "_", "-", -1)
 		break

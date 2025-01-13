@@ -11,67 +11,69 @@ import (
 	"strconv"
 )
 
-func parseInputsToRecord(rawInputs map[string]string, inputNum map[string]int64, inputStr map[string]string) arrow.Record {
+func parseInputsToRecord(rawInputs map[string]string, inputNum map[string]int64, inputStr map[string]string, chunkSize int64) arrow.Record {
 	// Iterate over the original map and copy the key-value pairs
 	totalNumInputs := len(rawInputs) + len(inputNum) + len(inputStr)
 	schema := make([]arrow.Field, totalNumInputs)
 	arrays := make([]arrow.Array, totalNumInputs)
-	i := 0
-	for key, value := range rawInputs {
-		if _, err := strconv.Atoi(value); err == nil {
+	for j := 0; j < int(chunkSize); j++ {
+		i := 0
+		for key, value := range rawInputs {
+			if _, err := strconv.Atoi(value); err == nil {
+				schema[i] = arrow.Field{Name: key, Type: arrow.PrimitiveTypes.Int64}
+				b := array.NewInt64Builder(memory.DefaultAllocator)
+				defer b.Release()
+				_ = b.AppendValueFromString(value) // cannot be nil
+				arrays[i] = b.NewInt64Array()
+			} else if _, err := strconv.ParseBool(value); err == nil {
+				schema[i] = arrow.Field{Name: key, Type: arrow.FixedWidthTypes.Boolean}
+				b := array.NewBooleanBuilder(memory.DefaultAllocator)
+				defer b.Release()
+				_ = b.AppendValueFromString(value) // cannot be nil
+				arrays[i] = b.NewBooleanArray()
+			} else if _, err := strconv.ParseFloat(value, 64); err == nil {
+				schema[i] = arrow.Field{Name: key, Type: arrow.PrimitiveTypes.Float64}
+				b := array.NewFloat64Builder(memory.DefaultAllocator)
+				defer b.Release()
+				_ = b.AppendValueFromString(value) // cannot be nil
+				arrays[i] = b.NewFloat64Array()
+			} else {
+				schema[i] = arrow.Field{Name: key, Type: arrow.BinaryTypes.LargeString}
+				b := array.NewLargeStringBuilder(memory.DefaultAllocator)
+				defer b.Release()
+				b.AppendString(value) // cannot be nil
+				arrays[i] = b.NewLargeStringArray()
+			}
+			i += 1
+		}
+		for key, value := range inputNum {
 			schema[i] = arrow.Field{Name: key, Type: arrow.PrimitiveTypes.Int64}
 			b := array.NewInt64Builder(memory.DefaultAllocator)
 			defer b.Release()
-			_ = b.AppendValueFromString(value) // cannot be nil
+			b.Append(value) // cannot be nil
 			arrays[i] = b.NewInt64Array()
-		} else if _, err := strconv.ParseBool(value); err == nil {
-			schema[i] = arrow.Field{Name: key, Type: arrow.FixedWidthTypes.Boolean}
-			b := array.NewBooleanBuilder(memory.DefaultAllocator)
-			defer b.Release()
-			_ = b.AppendValueFromString(value) // cannot be nil
-			arrays[i] = b.NewBooleanArray()
-		} else if _, err := strconv.ParseFloat(value, 64); err == nil {
-			schema[i] = arrow.Field{Name: key, Type: arrow.PrimitiveTypes.Float64}
-			b := array.NewFloat64Builder(memory.DefaultAllocator)
-			defer b.Release()
-			_ = b.AppendValueFromString(value) // cannot be nil
-			arrays[i] = b.NewFloat64Array()
-		} else {
+			i += 1
+		}
+		for key, value := range inputStr {
 			schema[i] = arrow.Field{Name: key, Type: arrow.BinaryTypes.LargeString}
 			b := array.NewLargeStringBuilder(memory.DefaultAllocator)
 			defer b.Release()
-			b.AppendString(value) // cannot be nil
+			b.Append(value) // cannot be nil
 			arrays[i] = b.NewLargeStringArray()
+			i += 1
 		}
-		i += 1
-	}
-	for key, value := range inputNum {
-		schema[i] = arrow.Field{Name: key, Type: arrow.PrimitiveTypes.Int64}
-		b := array.NewInt64Builder(memory.DefaultAllocator)
-		defer b.Release()
-		b.Append(value) // cannot be nil
-		arrays[i] = b.NewInt64Array()
-		i += 1
-	}
-	for key, value := range inputStr {
-		schema[i] = arrow.Field{Name: key, Type: arrow.BinaryTypes.LargeString}
-		b := array.NewLargeStringBuilder(memory.DefaultAllocator)
-		defer b.Release()
-		b.Append(value) // cannot be nil
-		arrays[i] = b.NewLargeStringArray()
-		i += 1
 	}
 
 	return array.NewRecord(arrow.NewSchema(schema, nil), arrays, 1)
 
 }
 
-func ProcessInputs(inputStr map[string]string, inputNum map[string]int64, input map[string]string) []byte {
+func ProcessInputs(inputStr map[string]string, inputNum map[string]int64, input map[string]string, chunkSize int64) []byte {
 	if inputStr == nil && inputNum == nil && input == nil {
 		fmt.Println("No inputs provided, please provide inputs with either `--in`, `--in_num`, `--in_str`, or `--in_file` flags")
 		os.Exit(1)
 	}
-	arrowRecord := parseInputsToRecord(input, inputNum, inputStr)
+	arrowRecord := parseInputsToRecord(input, inputNum, inputStr, chunkSize)
 	defer arrowRecord.Release()
 	inputBytes, err := recordToBytes(arrowRecord)
 	if err != nil {
