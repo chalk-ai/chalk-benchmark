@@ -17,7 +17,10 @@ import (
 	progress "github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"log/slog"
 )
+
+var version string
 
 type PlannerOptions struct {
 	UseNativeSql          bool
@@ -63,12 +66,20 @@ var rootCmd = &cobra.Command{
 	Short: "Run load test for chalk grpc",
 	Long:  `This should be run on a node close to the client's sandbox`,
 	Run: func(cmd *cobra.Command, args []string) {
+		if versionFlag {
+			fmt.Printf("Version %s\n", version)
+			os.Exit(0)
+		}
+		if debug {
+			slog.SetLogLoggerLevel(slog.LevelDebug)
+		}
 		rampDurationSeconds := uint(math.Floor(float64(rampDuration / time.Second)))
 		if rampDurationSeconds == 1 {
 			fmt.Print("Ramp duration must either be 0 or greater than 1 second\n")
 			os.Exit(1)
 		}
 		grpcHost, accessToken, targetEnvironment := AuthenticateUser(host, clientId, clientSecret, environment)
+		slog.Debug(fmt.Sprintf("grpcHost: %s, targetEnvironment: %s", grpcHost, targetEnvironment))
 
 		// Writes embedded protos to tmp directory
 		authHeaders := map[string]string{
@@ -217,6 +228,8 @@ var staticUnderscoreExprs bool
 var includeRequestMetadata bool
 var verbose bool
 var noProgress bool
+var debug bool
+var versionFlag bool
 
 // p50, p95, p99 buckets
 var p50 bool
@@ -269,7 +282,9 @@ func init() {
 	// other parameters
 	flags.BoolVar(&includeRequestMetadata, "include_request_md", false, "Whether to include request metadata in the report: this defaults to false since a true value includes the auth token.")
 	flags.BoolVar(&verbose, "verbose", false, "Whether to print verbose output.")
+	flags.BoolVar(&versionFlag, "version", false, "print out the cli verison.")
 	flags.BoolVar(&noProgress, "no-progress", false, "Whether to print verbose output.")
+	flags.BoolVar(&debug, "debug", false, "enable debug.")
 
 	// p50, p95, p99 buckets
 	flags.BoolVar(&p50, "p50", false, "The amount of time to use in bucketing P50—the default is to not include P50 in the chart")
