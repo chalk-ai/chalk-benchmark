@@ -52,7 +52,11 @@ func AuthenticateUser(host string, clientId string, clientSecret string, environ
 			fmt.Printf("Service token environment '%s' does not match the provided environment '%s'\n", tokenResult.PrimaryEnvironment, environment)
 			os.Exit(1)
 		}
-		grpcHost = strings.TrimPrefix(strings.TrimPrefix(tokenResult.Engines[targetEnvironment], "https://"), "http://")
+		if queryHost != "" {
+			grpcHost = strings.TrimPrefix(strings.TrimPrefix(queryHost, "https://"), "http://")
+		} else {
+			grpcHost = strings.TrimPrefix(strings.TrimPrefix(tokenResult.Engines[targetEnvironment], "https://"), "http://")
+		}
 		accessToken = tokenResult.AccessToken
 	}
 	return grpcHost, accessToken, targetEnvironment
