@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/chalk-ai/chalk-go"
+	"log/slog"
 	"os"
 	"strings"
+
+	"github.com/chalk-ai/chalk-go"
 )
 
 func AuthenticateUser(host string, clientId string, clientSecret string, environment string) (string, string, string) {
@@ -13,14 +15,21 @@ func AuthenticateUser(host string, clientId string, clientSecret string, environ
 	var accessToken string
 
 	if token != "" {
+		slog.Debug("Authenticating with token, not authenticating through grpc server.")
 		if environment == "" || queryHost == "" {
 			fmt.Println("When authenticating directly with a token, the environment and query-host must be explicitly provided. Please provide an environment with the `--environment` flag and a query host with the `--query-host` flag.")
 			os.Exit(1)
 		}
+		slog.Debug(fmt.Sprintf("Host: '%s' | QueryHost: '%s' | Environment: '%s'", host, queryHost, environment))
 		targetEnvironment = environment
 		grpcHost = strings.TrimPrefix(strings.TrimPrefix(queryHost, "https://"), "http://")
 		accessToken = token
 	} else {
+		if environment == "" {
+			slog.Debug(fmt.Sprintf("Authenticating to environment '%s' through API server: '%s'", environment, host))
+		} else {
+			slog.Debug(fmt.Sprintf("Authenticating through API server: '%s'", host))
+		}
 		client, err := chalk.NewClient(&chalk.ClientConfig{
 			ApiServer:     host,
 			ClientId:      clientId,
@@ -52,7 +61,11 @@ func AuthenticateUser(host string, clientId string, clientSecret string, environ
 			fmt.Printf("Service token environment '%s' does not match the provided environment '%s'\n", tokenResult.PrimaryEnvironment, environment)
 			os.Exit(1)
 		}
-		grpcHost = strings.TrimPrefix(strings.TrimPrefix(tokenResult.Engines[targetEnvironment], "https://"), "http://")
+		if queryHost != "" {
+			grpcHost = strings.TrimPrefix(strings.TrimPrefix(queryHost, "https://"), "http://")
+		} else {
+			grpcHost = strings.TrimPrefix(strings.TrimPrefix(tokenResult.Engines[targetEnvironment], "https://"), "http://")
+		}
 		accessToken = tokenResult.AccessToken
 	}
 	return grpcHost, accessToken, targetEnvironment
