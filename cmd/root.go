@@ -117,7 +117,7 @@ var rootCmd = &cobra.Command{
 				scheduleFile,
 			)
 		case "query_file":
-			onlineQueryContext := parse.ProcessOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, tags)
+			onlineQueryContext := parse.ProcessOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, queryNameVersion, tags)
 			records, err := parse.ReadParquetFile(inputFile, chunkSize)
 			if err != nil {
 				fmt.Printf("Failed to read parquet file with err: %s\n", err)
@@ -139,7 +139,7 @@ var rootCmd = &cobra.Command{
 		case "query":
 			queryInputs := parse.ProcessInputs(inputStr, inputNum, input, chunkSize)
 			queryOutputs := parse.ProcessOutputs(output)
-			onlineQueryContext := parse.ProcessOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, tags)
+			onlineQueryContext := parse.ProcessOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, queryNameVersion, tags)
 			benchmarkRunner = BenchmarkQuery(
 				grpcHost,
 				globalHeaders,
@@ -218,6 +218,7 @@ var tags []string
 var uploadFeatures bool
 var uploadFeaturesFile string
 var queryName string
+var queryNameVersion string
 var token string
 
 // planner options
@@ -274,6 +275,7 @@ func init() {
 	flags.BoolVar(&uploadFeatures, "upload_features", false, "Whether to upload features to Chalk.")
 	flags.StringVar(&uploadFeaturesFile, "upload_features_file", "", "File containing features to upload to Chalk.")
 	flags.StringVar(&queryName, "query_name", "", "Query name for the benchmark query.")
+	flags.StringVar(&queryNameVersion, "query_name_version", "", "Query name version for the benchmark query.")
 
 	// planner options
 	flags.BoolVar(&useNativeSql, "native_sql", false, "Whether to use the `use_native_sql_operators` planner option—defaults to whatever is set for environment.")

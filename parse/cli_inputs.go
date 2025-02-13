@@ -95,7 +95,7 @@ func ProcessOutputs(output []string) []*commonv1.OutputExpr {
 	return outputsProcessed
 }
 
-func ProcessOnlineQueryContext(useNativeSql bool, staticUnderscoreExprs bool, queryName string, tags []string) *commonv1.OnlineQueryContext {
+func ProcessOnlineQueryContext(useNativeSql bool, staticUnderscoreExprs bool, queryName string, queryNameVersion string, tags []string) *commonv1.OnlineQueryContext {
 	onlineQueryContext := commonv1.OnlineQueryContext{Options: map[string]*structpb.Value{}}
 	if useNativeSql {
 		onlineQueryContext.Options["use_native_sql_operators"] = structpb.NewBoolValue(useNativeSql)
@@ -105,6 +105,9 @@ func ProcessOnlineQueryContext(useNativeSql bool, staticUnderscoreExprs bool, qu
 	}
 	if queryName != "" {
 		onlineQueryContext.QueryName = &queryName
+	}
+	if queryNameVersion != "" {
+		onlineQueryContext.QueryNameVersion = &queryNameVersion
 	}
 	if tags != nil {
 		onlineQueryContext.Tags = tags
