@@ -99,7 +99,7 @@ var rootCmd = &cobra.Command{
 			runner.WithInsecure(insecureQueryHost),
 			runner.WithSkipTLSVerify(insecureQueryHost),
 		}
-		slog.Debug(fmt.Sprintf("Global Headers: %v", globalHeaders))
+		slog.Debug(fmt.Sprintf("numConnections: %s, timeout: %s, concurrency: %s, insecure: %b, skipTLSVerify: %b", numConnections, timeout, concurrency, insecureQueryHost))
 
 		var benchmarkRunner []BenchmarkFunction
 		var result *runner.Report
