@@ -97,9 +97,9 @@ var rootCmd = &cobra.Command{
 			runner.WithAsync(true),
 			runner.WithConcurrency(concurrency),
 			runner.WithInsecure(insecureQueryHost),
-			runner.WithSkipTLSVerify(insecureQueryHost),
+			runner.WithSkipTLSVerify(skipTLS),
 		}
-		slog.Debug(fmt.Sprintf("numConnections: %s, timeout: %s, concurrency: %s, insecure: %b, skipTLSVerify: %b", numConnections, timeout, concurrency, insecureQueryHost))
+		slog.Debug(fmt.Sprintf("numConnections: %s, timeout: %s, concurrency: %s, insecure: %b, skipTLSVerify: %b", numConnections, timeout, concurrency, insecureQueryHost, skipTLS))
 
 		var benchmarkRunner []BenchmarkFunction
 		var result *runner.Report
@@ -204,6 +204,7 @@ var chunkSize int64
 // environment & client parameters
 var host string
 var insecureQueryHost bool
+var skipTLS bool
 var queryHost string
 var environment string
 var clientId string
@@ -262,6 +263,7 @@ func init() {
 	flags.StringVar(&host, "api-host", "https://api.chalk.ai", "API server url—in host cases, this default will work.")
 	flags.StringVar(&queryHost, "query_host", "", "query server url—in host cases, this default will work.")
 	flags.BoolVar(&insecureQueryHost, "insecure", false, "whether to run the client without TLS—can be useful when making requests directly to the engine.")
+	flags.BoolVar(&skipTLS, "skip_tls", false, "skip tls verification for self signed cert.")
 	flags.StringVar(&environment, "environment", "", "Environment for the client.")
 	flags.StringVarP(&clientId, "client_id", "c", os.Getenv("CHALK_CLIENT_ID"), "client_id for your environment.")
 	flags.StringVarP(&clientSecret, "client_secret", "s", os.Getenv("CHALK_CLIENT_SECRET"), "client_secret for your environment.")
