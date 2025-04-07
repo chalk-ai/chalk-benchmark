@@ -10,10 +10,10 @@ import (
 
 func ReadParquetFile(featuresFile string, chunkSize int64) ([][]byte, error) {
 	file, err := parquetFile.OpenParquetFile(featuresFile, false)
-	defer file.Close()
 	if err != nil {
 		return nil, err
 	}
+	defer file.Close()
 	reader, err := pqarrow.NewFileReader(file, pqarrow.ArrowReadProperties{}, memory.DefaultAllocator)
 	if err != nil {
 		return nil, err
