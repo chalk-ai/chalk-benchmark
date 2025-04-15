@@ -119,17 +119,12 @@ var rootCmd = &cobra.Command{
 			)
 		case "query_file":
 			onlineQueryContext := parse.ProcessOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, queryNameVersion, tags)
-			records, err := parse.ReadParquetFile(inputFile, chunkSize)
-			if err != nil {
-				fmt.Printf("Failed to read parquet file with err: %s\n", err)
-				os.Exit(1)
-			}
-
 			queryOutputs := parse.ProcessOutputs(output)
+
 			benchmarkRunner = BenchmarkQueryFromFile(
 				grpcHost,
 				globalHeaders,
-				records,
+				inputFile,
 				queryOutputs,
 				onlineQueryContext,
 				rps,

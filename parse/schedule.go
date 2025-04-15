@@ -105,7 +105,7 @@ func ParseScheduleFile(scheduleFile string, rampDuration time.Duration) []QueryR
 				os.Exit(1)
 			}
 			if i == 0 && rampDuration != time.Duration(0) {
-				queryRuns = QueryRateOptions(uint(cp.RPS), stepTime, rampDuration, 0, "")
+				queryRuns = QueryRateOptions(uint(cp.RPS), stepTime, rampDuration, "")
 				continue
 			}
 			numRequests := uint(float64(cp.RPS) * stepTime.Seconds())
@@ -128,7 +128,7 @@ func ParseScheduleFile(scheduleFile string, rampDuration time.Duration) []QueryR
 	return queryRuns
 }
 
-func QueryRateOptions(rps uint, benchmarkDuration time.Duration, rampDuration time.Duration, totalRequests uint, scheduleFile string) []QueryRun {
+func QueryRateOptions(rps uint, benchmarkDuration time.Duration, rampDuration time.Duration, scheduleFile string) []QueryRun {
 	if scheduleFile != "" {
 		return ParseScheduleFile(scheduleFile, rampDuration)
 	}
@@ -136,8 +136,8 @@ func QueryRateOptions(rps uint, benchmarkDuration time.Duration, rampDuration ti
 		runner.WithRPS(rps),
 	}
 	var durationSeconds uint
-  durationSeconds = uint(math.Ceil(float64(benchmarkDuration / time.Second)))
-  totalRequests = uint(float64(durationSeconds * rps))
+	durationSeconds = uint(math.Ceil(float64(benchmarkDuration / time.Second)))
+	totalRequests := uint(float64(durationSeconds * rps))
 
 	if rampDuration != time.Duration(0) {
 		rampDurationSeconds := uint(math.Floor(float64(rampDuration / time.Second)))

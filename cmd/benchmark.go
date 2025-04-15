@@ -72,7 +72,7 @@ func BenchmarkQuery(
 	scheduleFile string,
 ) []BenchmarkFunction {
 	// total requests calculated from duration and RPS
-	queryOptions := parse.QueryRateOptions(rps, benchmarkDuration, rampDuration, 0, scheduleFile)
+	queryOptions := parse.QueryRateOptions(rps, benchmarkDuration, rampDuration, scheduleFile)
 
 	oqr := commonv1.OnlineQueryBulkRequest{
 		InputsFeather: queryInputs,
@@ -121,7 +121,7 @@ func BenchmarkQuery(
 func BenchmarkQueryFromFile(
 	grpcHost string,
 	globalHeaders []runner.Option,
-	records [][]byte,
+	file string,
 	outputs []*commonv1.OutputExpr,
 	onlineQueryContext *commonv1.OnlineQueryContext,
 	rps uint,
@@ -129,26 +129,33 @@ func BenchmarkQueryFromFile(
 	rampDuration time.Duration,
 	scheduleFile string,
 ) []BenchmarkFunction {
-	// total requests calculated from duration and RPS
-	queryOptions := parse.QueryRateOptions(rps, benchmarkDuration, rampDuration, uint(len(records)), scheduleFile)
+	// total requests c alculated from duration and RPS
+	queryOptions := parse.QueryRateOptions(rps, benchmarkDuration, rampDuration, scheduleFile)
+	iterator := parse.IterateParquetFile(file, 1000)
 
 	// binaryData, err := proto.Marshal(&onlineQueryContext)
 	binaryDataFunc := func(mtd *desc.MethodDescriptor, cd *runner.CallData) []byte {
-		request := records[cd.RequestNumber%int64(len(records))]
+		ret := make([]byte, 0)
+		iterator(func(data []byte, err error) bool {
+			request := data
 
-		oqr := commonv1.OnlineQueryBulkRequest{
-			InputsFeather: request,
-			Outputs:       outputs,
-			Context:       onlineQueryContext,
-		}
-		value, err := proto.Marshal(
-			&oqr,
-		)
-		if err != nil {
-			fmt.Printf("Failed to marshal online query request with inputs: '%v', outputs: '%v', and context '%v'\n", request, outputs, onlineQueryContext)
-			os.Exit(1)
-		}
-		return value
+			oqr := commonv1.OnlineQueryBulkRequest{
+				InputsFeather: request,
+				Outputs:       outputs,
+				Context:       onlineQueryContext,
+			}
+			value, err := proto.Marshal(
+				&oqr,
+			)
+			if err != nil {
+				fmt.Printf("Failed to marshal online query request with inputs: '%v', outputs: '%v', and context '%v'\n", request, outputs, onlineQueryContext)
+				os.Exit(1)
+			}
+			ret = value
+			return true
+		})
+
+		return ret
 	}
 	var bfs []BenchmarkFunction
 	for _, queryOption := range queryOptions {
@@ -191,7 +198,7 @@ func BenchmarkUploadFeatures(
 	scheduleFile string,
 ) []BenchmarkFunction {
 	file, err := os.Open(uploadFeaturesFile)
-	queryOptions := parse.QueryRateOptions(rps, benchmarkDuration, rampDuration, 0, scheduleFile)
+	queryOptions := parse.QueryRateOptions(rps, benchmarkDuration, rampDuration, scheduleFile)
 	if err != nil {
 		fmt.Printf("Failed to open file with err: %s\n", err)
 		os.Exit(1)
