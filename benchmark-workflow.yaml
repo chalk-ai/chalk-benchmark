@@ -1,0 +1,194 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: chalk-benchmark-
+  labels:
+    workflows.argoproj.io/archive-strategy: "false"
+spec:
+  entrypoint: scale-and-benchmark
+  serviceAccountName: benchmark-service-account
+  onExit: scale-down-deployment
+  arguments:
+    parameters:
+      - name: client_id
+      - name: client_secret
+      - name: warmup_duration
+        value: "10s"
+      - name: warmup_rps
+        value: "5"
+  templates:
+    - name: scale-and-benchmark
+      inputs:
+        parameters:
+          - name: replicas
+            value: "3"
+          - name: scaledown_replicas
+            value: "1"
+          - name: rps
+            value: "10"
+          - name: duration
+            value: "30s"
+      steps:
+        - - name: scale-up-deployment
+            template: scale-up-deployment
+            arguments:
+              parameters:
+                - name: replicas
+                  value: "{{inputs.parameters.replicas}}"
+        - - name: wait-for-replicas
+            template: wait-for-replicas
+            arguments:
+              parameters:
+                - name: replicas
+                  value: "{{inputs.parameters.replicas}}"
+        - - name: warmup
+            template: chalk-benchmark
+            arguments:
+              parameters:
+                - name: duration
+                  value: "{{workflow.parameters.warmup_duration}}"
+                - name: rps
+                  value: "{{workflow.parameters.warmup_rps}}"
+                - name: client_id
+                  value: "{{workflow.parameters.client_id}}"
+                - name: client_secret
+                  value: "{{workflow.parameters.client_secret}}"
+        - - name: chalk-benchmark
+            template: chalk-benchmark
+            arguments:
+              parameters:
+                - name: duration
+                  value: "{{inputs.parameters.duration}}"
+                - name: rps
+                  value: "{{inputs.parameters.rps}}"
+                - name: client_id
+                  value: "{{workflow.parameters.client_id}}"
+                - name: client_secret
+                  value: "{{workflow.parameters.client_secret}}"
+
+    - name: scale-up-deployment
+      inputs:
+        parameters:
+          - name: replicas
+      script:
+        image: bitnami/kubectl:latest
+        command: [sh]
+        source: |
+          kubectl scale deployment chalk-deployment --namespace=default --replicas={{inputs.parameters.replicas}}
+
+    - name: scale-down-deployment
+      inputs:
+        parameters:
+          - name: scaledown_replicas
+            value: "1"
+      script:
+        image: bitnami/kubectl:latest
+        command: [sh]
+        source: |
+          kubectl scale deployment chalk-deployment --namespace=default --replicas={{inputs.parameters.scaledown_replicas}}
+
+    - name: wait-for-replicas
+      inputs:
+        parameters:
+          - name: replicas
+      script:
+        image: bitnami/kubectl:latest
+        command: [sh]
+        source: |
+          kubectl wait --for=condition=available --timeout=600s deployment/chalk-deployment --namespace=default
+
+    - name: chalk-benchmark
+      inputs:
+        parameters:
+          - name: duration
+          - name: rps
+          - name: client_id
+          - name: client_secret
+      initContainers:
+        - name: data-downloader
+          image: amazon/aws-cli
+          command:
+            - sh
+            - -c
+            - |
+              # Download test data from S3
+              aws s3 cp s3://chalk-benchmark-data/test-data.parquet /data/
+              echo "File downloaded - verifying size:"
+              ls -lh /data/test-data.parquet
+          volumeMounts:
+            - name: shared-data
+              mountPath: /data
+      container:
+        image: us-central1-docker.pkg.dev/chalk-infra/public-images/chalk-benchmark:latest
+        command: ["/usr/local/bin/chalk-benchmark/chalk-benchmark"]
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "4"
+          limits:
+            memory: "8Gi"
+            cpu: "8"
+        args: [
+          "--client-id", "{{inputs.parameters.client_id}}",
+          "--client-secret", "{{inputs.parameters.client_secret}}",
+          "--in-file", "/data/test-data.parquet",
+          "--chunk_size", "1",
+          # Example output features
+          "--out", "user.features.risk_score",
+          "--out", "user.features.fraud_probability",
+          "--out", "user.features.account_age_days",
+          "--out", "user.features.transaction_count",
+          "--out", "user.features.avg_transaction_amount",
+          "--out", "user.computed.is_verified",
+          "--out", "user.computed.trust_level",
+          "--out", "merchant.features.category",
+          "--out", "merchant.features.risk_rating",
+          "--out", "merchant.features.monthly_volume",
+          "--out", "transaction.features.amount",
+          "--out", "transaction.features.currency",
+          "--out", "transaction.features.timestamp",
+          "--out", "transaction.computed.is_suspicious",
+          "--out", "transaction.computed.risk_flags",
+          "--host", "https://api.chalk.ai",
+          "--query-host", "chalk-query-service:80",
+          "--insecure",
+          "--duration", "{{inputs.parameters.duration}}",
+          "--rps", "{{inputs.parameters.rps}}",
+          "--concurrency", "60",
+          "--num-connections", "60"
+        ]
+        volumeMounts:
+          - mountPath: /etc/pki/tls/certs
+            name: extra-ca
+          - mountPath: /data
+            name: shared-data
+      volumes:
+        - name: extra-ca
+          projected:
+            sources:
+              - configMap:
+                  name: extra-certificates
+                  optional: true
+        - name: shared-data
+          emptyDir: {}
+      outputs:
+        artifacts:
+          - name: benchmark_report
+            path: /app/result.html
+            s3:
+              bucket: chalk-benchmark-results
+              key: benchmark_output_{{workflow.name}}_{{steps.name}}.tar.gz
+              useSDKCreds: true
+              endpoint: s3.amazonaws.com
+              region: us-east-1
+
+  # Workflow TTL configuration
+  ttlStrategy:
+    secondsAfterCompletion: 172800  # Keep for 48 hours after completion
+    secondsAfterSuccess: 172800      # Keep for 48 hours after success
+    secondsAfterFailure: 7200        # Keep for 2 hours after failure
+
+  # Prevent multiple benchmarks from running simultaneously
+  synchronization:
+    mutex:
+      name: chalk-benchmark-lock
