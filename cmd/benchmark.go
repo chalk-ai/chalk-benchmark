@@ -63,7 +63,7 @@ func BenchmarkPing(grpcHost string, authHeaders []runner.Option) []BenchmarkFunc
 func BenchmarkQuery(
 	grpcHost string,
 	globalHeaders []runner.Option,
-	queryInputs []byte,
+	queryInputs [][]byte, // Changed from []byte to [][]byte to support multiple inputs
 	queryOutputs []*commonv1.OutputExpr,
 	onlineQueryContext *commonv1.OnlineQueryContext,
 	rps uint,
@@ -74,8 +74,70 @@ func BenchmarkQuery(
 	// total requests calculated from duration and RPS
 	queryOptions := parse.QueryRateOptions(rps, benchmarkDuration, rampDuration, scheduleFile)
 
+	// If we have multiple inputs, we need to create a requester for each one
+	if len(queryInputs) > 1 {
+		var bfs []BenchmarkFunction
+
+		// Pre-marshal all requests to avoid marshaling overhead on each request
+		preMarshaledRequests := make([][]byte, len(queryInputs))
+		for i, inputBytes := range queryInputs {
+			oqr := commonv1.OnlineQueryBulkRequest{
+				InputsFeather: inputBytes,
+				Outputs:       queryOutputs,
+				Context:       onlineQueryContext,
+			}
+			value, err := proto.Marshal(&oqr)
+			if err != nil {
+				fmt.Printf("Failed to marshal online query request with outputs: '%v', and context '%v'\n", queryOutputs, onlineQueryContext)
+				os.Exit(1)
+			}
+			preMarshaledRequests[i] = value
+		}
+
+		// Create a function that cycles through the pre-marshaled requests
+		currentInputIndex := 0
+		binaryDataFunc := func(mtd *desc.MethodDescriptor, cd *runner.CallData) []byte {
+			// Select the current request and increment index
+			request := preMarshaledRequests[currentInputIndex]
+			currentInputIndex = (currentInputIndex + 1) % len(preMarshaledRequests)
+			return request
+		}
+
+		// Create BenchmarkFunctions for each query option
+		for _, queryOption := range queryOptions {
+			runConfig, err := runner.NewConfig(
+				strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryBulkProcedure, "/"),
+				grpcHost,
+				slices.Concat(
+					globalHeaders,
+					queryOption.Options,
+					[]runner.Option{
+						runner.WithBinaryDataFunc(binaryDataFunc),
+					},
+				)...,
+			)
+			if err != nil {
+				fmt.Printf("Failed to create run config with err: %s\n", err)
+				os.Exit(1)
+			}
+			req, err := runner.NewRequester(runConfig)
+			if err != nil {
+				fmt.Printf("Failed to create requester with err: %s\n", err)
+				os.Exit(1)
+			}
+
+			bfs = append(bfs, BenchmarkFunction{
+				F:        req,
+				Duration: queryOption.Duration,
+				Type:     queryOption.Type,
+			})
+		}
+		return bfs
+	}
+
+	// Single input case (original behavior)
 	oqr := commonv1.OnlineQueryBulkRequest{
-		InputsFeather: queryInputs,
+		InputsFeather: queryInputs[0], // Use the first (and only) input
 		Outputs:       queryOutputs,
 		Context:       onlineQueryContext,
 	}
