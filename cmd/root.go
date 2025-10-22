@@ -62,7 +62,7 @@ func pbar(t time.Duration, rampDuration time.Duration, wg *sync.WaitGroup, stepD
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "chalk-benchmark --client-id <client_id> --client-secret <client_secret> --rps <rps> --duration-seconds <duration_seconds> --in user.id=1 --out user.email",
+	Use:   "chalk-benchmark --client-id <client_id> --client-secret <client_secret> --rps <rps> --duration <duration> --in user.id=1 --out user.email",
 	Short: "Run load test for chalk grpc",
 	Long:  `This should be run on a node close to the client's sandbox`,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -93,6 +93,7 @@ var rootCmd = &cobra.Command{
 			runner.WithReflectionMetadata(authHeaders),
 			runner.WithAsync(true),
 			runner.WithConnections(numConnections),
+			runner.WithCPUs(12),
 			runner.WithTimeout(timeout),
 			runner.WithAsync(true),
 			runner.WithConcurrency(concurrency),
@@ -118,7 +119,7 @@ var rootCmd = &cobra.Command{
 				scheduleFile,
 			)
 		case "query_file":
-			onlineQueryContext := parse.ProcessOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, queryNameVersion, tags)
+			onlineQueryContext := parse.ProcessOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, queryNameVersion, tags, storePlanStages)
 			queryOutputs := parse.ProcessOutputs(output)
 
 			benchmarkRunner = BenchmarkQueryFromFile(
@@ -133,13 +134,15 @@ var rootCmd = &cobra.Command{
 				scheduleFile,
 			)
 		case "query":
-			queryInputs := parse.ProcessInputs(inputStr, inputNum, input, chunkSize)
+			// Parse inputRaw into input map
+			input = parseInputArray(inputRaw)
+			queryInputsList := parse.ProcessInputs(inputStr, inputNum, input, chunkSize)
 			queryOutputs := parse.ProcessOutputs(output)
-			onlineQueryContext := parse.ProcessOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, queryNameVersion, tags)
+			onlineQueryContext := parse.ProcessOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, queryNameVersion, tags, storePlanStages)
 			benchmarkRunner = BenchmarkQuery(
 				grpcHost,
 				globalHeaders,
-				queryInputs,
+				queryInputsList,
 				queryOutputs,
 				onlineQueryContext,
 				rps,
@@ -183,6 +186,17 @@ func normalizeFlagNames(_ *pflag.FlagSet, name string) pflag.NormalizedName {
 	return pflag.NormalizedName(name)
 }
 
+func parseInputArray(inputRaw []string) map[string]string {
+	result := make(map[string]string)
+	for _, item := range inputRaw {
+		parts := strings.SplitN(item, "=", 2)
+		if len(parts) == 2 {
+			result[parts[0]] = parts[1]
+		}
+	}
+	return result
+}
+
 // benchmark parameters
 var test bool
 var rps uint
@@ -207,9 +221,11 @@ var clientSecret string
 
 // input & output parameters
 var input map[string]string
+var inputRaw []string
 var inputStr map[string]string
 var inputNum map[string]int64
 var inputFile string
+var pkeys []string
 var output []string
 var tags []string
 var uploadFeatures bool
@@ -228,6 +244,7 @@ var verbose bool
 var noProgress bool
 var debug bool
 var versionFlag bool
+var storePlanStages bool
 
 // p50, p95, p99 buckets
 var p50 bool
@@ -264,10 +281,10 @@ func init() {
 	flags.StringVarP(&clientSecret, "client_secret", "s", os.Getenv("CHALK_CLIENT_SECRET"), "client_secret for your environment.")
 
 	// input & output parameters
-	flags.StringToStringVar(&input, "in", nil, "input features to the online query, for instance: 'user.id=xwdw,user.name'John'. This flag will try to convert inputs to the right type. If you need to explicitly pass in a number or string, use the `in-num` or `in-str` flag.")
+	flags.StringArrayVar(&inputRaw, "in", nil, "input features to the online query, for instance: 'user.id=xwdw' or 'user.name=John'. This flag will try to convert inputs to the right type. Supports array notation like 'user.id=[1,2,3,4]' for multiple values. Can be specified multiple times. If you need to explicitly pass in a number or string, use the `in-num` or `in-str` flag.")
 	flags.StringVar(&inputFile, "in_file", "", "input features to the online query through a parquet file—columns should be valid feature names")
-	flags.StringToStringVar(&inputStr, "in_str", nil, "string input features to the online query, for instance: 'user.id=xwdw,user.name'John'.")
-	flags.StringToInt64Var(&inputNum, "in_num", nil, "numeric input features to the online query, for instance 'user.id=1,user.age=28'")
+	flags.StringToStringVar(&inputStr, "in_str", nil, "string input features to the online query, for instance: 'user.id=xwdw,user.name'John'. Supports array notation like 'user.id=[a,b,c,d]' for multiple values.")
+	flags.StringToInt64Var(&inputNum, "in_num", nil, "numeric input features to the online query, for instance 'user.id=1,user.age=28'. Note that array notation is supported in the --in flag for numeric arrays.")
 	flags.StringArrayVar(&output, "out", nil, "target output features for the online query, for instance: 'user.is_fraud'.")
 	flags.StringArrayVar(&tags, "tag", nil, "Tags to add to the online query: e.g. '--tag test'.")
 	flags.BoolVar(&uploadFeatures, "upload_features", false, "Whether to upload features to Chalk.")
@@ -285,6 +302,7 @@ func init() {
 	flags.BoolVar(&versionFlag, "version", false, "print out the cli verison.")
 	flags.BoolVar(&noProgress, "no-progress", false, "Whether to print verbose output.")
 	flags.BoolVar(&debug, "debug", false, "enable debug.")
+	flags.BoolVar(&storePlanStages, "store-plan-stages", false, "Whether to store the plan tags in the report—this is only useful for debugging: should never be used in an actual benchmark.")
 
 	// p50, p95, p99 buckets
 	flags.BoolVar(&p50, "p50", false, "The amount of time to use in bucketing P50—the default is to not include P50 in the chart")

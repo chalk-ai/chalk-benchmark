@@ -38,6 +38,30 @@ func TestCliInputsBasic(t *testing.T) {
 	}
 }
 
+func TestCliInputsArray(t *testing.T) {
+	record := ProcessInputs(
+		nil,
+		nil,
+		map[string]string{
+			"id": "[a,b,c]",
+		},
+		1,
+	)
+	assert.Equal(t, len(record), 3, "expected 3 records")
+}
+
+func TestCliInputsArrayWithUUIDs(t *testing.T) {
+	record := ProcessInputs(
+		nil,
+		nil,
+		map[string]string{
+			"user.id": "[40376262-9f61-40a1-a77e-5e0278a3f0b4,68ee7439-161a-47e2-ad0f-70f3f52ae29d]",
+		},
+		1,
+	)
+	assert.Equal(t, len(record), 2, "expected 2 records for 2 UUIDs")
+}
+
 func TestCliInputsOverride(t *testing.T) {
 	record := parseInputsToRecord(
 		map[string]string{
