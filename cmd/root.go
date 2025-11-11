@@ -105,7 +105,7 @@ var rootCmd = &cobra.Command{
 		var benchmarkRunner []BenchmarkFunction
 		var result *runner.Report
 
-		switch lo.Ternary(test, "test", lo.Ternary(uploadFeatures, "upload", lo.Ternary(inputFile != "", "query_file", "query"))) {
+		switch lo.Ternary(test, "test", lo.Ternary(uploadFeatures, "upload", lo.Ternary(inputJSONFile != "", "query_json", lo.Ternary(inputFile != "", "query_file", "query")))) {
 		case "test":
 			benchmarkRunner = BenchmarkPing(grpcHost, globalHeaders)
 		case "upload":
@@ -117,6 +117,23 @@ var rootCmd = &cobra.Command{
 				benchmarkDuration,
 				rampDuration,
 				scheduleFile,
+			)
+		case "query_json":
+			onlineQueryContext := parse.ProcessOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, queryNameVersion, tags, storePlanStages)
+			queryOutputs := parse.ProcessOutputs(output)
+			queryInputsList := parse.ProcessJSONInputs(inputJSONFile)
+
+			benchmarkRunner = BenchmarkQuery(
+				grpcHost,
+				globalHeaders,
+				queryInputsList,
+				queryOutputs,
+				onlineQueryContext,
+				rps,
+				benchmarkDuration,
+				rampDuration,
+				scheduleFile,
+				randomSampling,
 			)
 		case "query_file":
 			onlineQueryContext := parse.ProcessOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, queryNameVersion, tags, storePlanStages)
@@ -149,6 +166,7 @@ var rootCmd = &cobra.Command{
 				benchmarkDuration,
 				rampDuration,
 				scheduleFile,
+				randomSampling,
 			)
 		}
 
@@ -225,6 +243,8 @@ var inputRaw []string
 var inputStr map[string]string
 var inputNum map[string]int64
 var inputFile string
+var inputJSONFile string
+var randomSampling bool
 var pkeys []string
 var output []string
 var tags []string
@@ -283,6 +303,8 @@ func init() {
 	// input & output parameters
 	flags.StringArrayVar(&inputRaw, "in", nil, "input features to the online query, for instance: 'user.id=xwdw' or 'user.name=John'. This flag will try to convert inputs to the right type. Supports array notation like 'user.id=[1,2,3,4]' for multiple values. Can be specified multiple times. If you need to explicitly pass in a number or string, use the `in-num` or `in-str` flag.")
 	flags.StringVar(&inputFile, "in_file", "", "input features to the online query through a parquet file—columns should be valid feature names")
+	flags.StringVar(&inputJSONFile, "in_json", "", "input features to the online query through a JSON file containing a list of objects—each object represents one query with feature names as keys")
+	flags.BoolVar(&randomSampling, "random_sampling", false, "when enabled, randomly samples from the pre-encoded input list instead of cycling through sequentially")
 	flags.StringToStringVar(&inputStr, "in_str", nil, "string input features to the online query, for instance: 'user.id=xwdw,user.name'John'. Supports array notation like 'user.id=[a,b,c,d]' for multiple values.")
 	flags.StringToInt64Var(&inputNum, "in_num", nil, "numeric input features to the online query, for instance 'user.id=1,user.age=28'. Note that array notation is supported in the --in flag for numeric arrays.")
 	flags.StringArrayVar(&output, "out", nil, "target output features for the online query, for instance: 'user.is_fraud'.")

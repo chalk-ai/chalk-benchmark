@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"io"
 	"math"
+	"math/rand"
 	"os"
 	"os/signal"
 	"slices"
@@ -70,6 +71,7 @@ func BenchmarkQuery(
 	benchmarkDuration time.Duration,
 	rampDuration time.Duration,
 	scheduleFile string,
+	randomSampling bool,
 ) []BenchmarkFunction {
 	// total requests calculated from duration and RPS
 	queryOptions := parse.QueryRateOptions(rps, benchmarkDuration, rampDuration, scheduleFile)
@@ -94,12 +96,19 @@ func BenchmarkQuery(
 			preMarshaledRequests[i] = value
 		}
 
-		// Create a function that cycles through the pre-marshaled requests
+		// Create a function that either randomly samples or cycles through the pre-marshaled requests
 		currentInputIndex := 0
 		binaryDataFunc := func(mtd *desc.MethodDescriptor, cd *runner.CallData) []byte {
-			// Select the current request and increment index
-			request := preMarshaledRequests[currentInputIndex]
-			currentInputIndex = (currentInputIndex + 1) % len(preMarshaledRequests)
+			var request []byte
+			if randomSampling {
+				// Randomly select from pre-marshaled requests
+				randomIndex := rand.Intn(len(preMarshaledRequests))
+				request = preMarshaledRequests[randomIndex]
+			} else {
+				// Cycle through requests sequentially
+				request = preMarshaledRequests[currentInputIndex]
+				currentInputIndex = (currentInputIndex + 1) % len(preMarshaledRequests)
+			}
 			return request
 		}
 
