@@ -199,10 +199,11 @@ func BenchmarkQueryFromFile(
 	benchmarkDuration time.Duration,
 	rampDuration time.Duration,
 	scheduleFile string,
+	chunkSize int64,
 ) []BenchmarkFunction {
-	// total requests c alculated from duration and RPS
+	// total requests calculated from duration and RPS
 	queryOptions := parse.QueryRateOptions(rps, benchmarkDuration, rampDuration, scheduleFile)
-	iterator := parse.IterateParquetFile(file, 1000)
+	iterator := parse.IterateParquetFile(file, chunkSize)
 
 	// binaryData, err := proto.Marshal(&onlineQueryContext)
 	binaryDataFunc := func(mtd *desc.MethodDescriptor, cd *runner.CallData) []byte {

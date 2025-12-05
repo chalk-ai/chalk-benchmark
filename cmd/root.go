@@ -149,6 +149,7 @@ var rootCmd = &cobra.Command{
 				benchmarkDuration,
 				rampDuration,
 				scheduleFile,
+				chunkSize,
 			)
 		case "query":
 			// Parse inputRaw into input map
