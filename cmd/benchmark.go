@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
+	"github.com/apache/arrow/go/v17/arrow/ipc"
 	"github.com/chalk-ai/chalk-benchmark/parse"
 	commonv1 "github.com/chalk-ai/chalk-go/gen/chalk/common/v1"
 	enginev1 "github.com/chalk-ai/chalk-go/gen/chalk/engine/v1"
@@ -203,31 +205,63 @@ func BenchmarkQueryFromFile(
 ) []BenchmarkFunction {
 	// total requests calculated from duration and RPS
 	queryOptions := parse.QueryRateOptions(rps, benchmarkDuration, rampDuration, scheduleFile)
-	iterator := parse.IterateParquetFile(file, chunkSize)
 
-	// binaryData, err := proto.Marshal(&onlineQueryContext)
+	// Pre-populate all batches from the parquet file
+	batches, err := parse.ReadParquetFile(file, chunkSize)
+	if err != nil {
+		fmt.Printf("Failed to read parquet file with err: %s\n", err)
+		os.Exit(1)
+	}
+
+	if len(batches) == 0 {
+		fmt.Printf("No batches found in parquet file: %s\n", file)
+		os.Exit(1)
+	}
+
+	// Drop the last batch if it's smaller than chunkSize (incomplete batch)
+	if chunkSize > 0 && len(batches) > 1 {
+		// Decode the last batch to check its size
+		lastBatch := batches[len(batches)-1]
+		reader, err := ipc.NewFileReader(bytes.NewReader(lastBatch))
+		if err == nil && reader.NumRecords() > 0 {
+			lastRecord, err := reader.Record(0)
+			if err == nil {
+				if lastRecord.NumRows() < chunkSize {
+					batches = batches[:len(batches)-1]
+					fmt.Printf("Dropped last incomplete batch (had %d rows, expected %d)\n", lastRecord.NumRows(), chunkSize)
+				}
+				lastRecord.Release()
+			}
+			reader.Close()
+		}
+	}
+
+	// Pre-marshal all requests to avoid marshaling overhead on each request
+	preMarshaledRequests := make([][]byte, len(batches))
+	for i, batch := range batches {
+		oqr := commonv1.OnlineQueryBulkRequest{
+			InputsFeather: batch,
+			Outputs:       outputs,
+			Context:       onlineQueryContext,
+		}
+		value, err := proto.Marshal(&oqr)
+		if err != nil {
+			fmt.Printf("Failed to marshal online query request with outputs: '%v', and context '%v'\n", outputs, onlineQueryContext)
+			os.Exit(1)
+		}
+		preMarshaledRequests[i] = value
+	}
+
+	// Track which request to use next (cycles through pre-marshaled requests)
+	requestIndex := 0
+	var requestMutex sync.Mutex
+
 	binaryDataFunc := func(mtd *desc.MethodDescriptor, cd *runner.CallData) []byte {
-		ret := make([]byte, 0)
-		iterator(func(data []byte, err error) bool {
-			request := data
-
-			oqr := commonv1.OnlineQueryBulkRequest{
-				InputsFeather: request,
-				Outputs:       outputs,
-				Context:       onlineQueryContext,
-			}
-			value, err := proto.Marshal(
-				&oqr,
-			)
-			if err != nil {
-				fmt.Printf("Failed to marshal online query request with inputs: '%v', outputs: '%v', and context '%v'\n", request, outputs, onlineQueryContext)
-				os.Exit(1)
-			}
-			ret = value
-			return true
-		})
-
-		return ret
+		requestMutex.Lock()
+		currentRequest := preMarshaledRequests[requestIndex]
+		requestIndex = (requestIndex + 1) % len(preMarshaledRequests)
+		requestMutex.Unlock()
+		return currentRequest
 	}
 	var bfs []BenchmarkFunction
 	for _, queryOption := range queryOptions {
