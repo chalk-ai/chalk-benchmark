@@ -267,10 +267,11 @@ var debug bool
 var versionFlag bool
 var storePlanStages bool
 
-// p50, p95, p99 buckets
+// p50, p95, p99, p99.9 buckets
 var p50 bool
 var p95 bool
 var p99 bool
+var p99_9 bool
 var percentileWindow time.Duration
 
 func init() {
@@ -327,9 +328,10 @@ func init() {
 	flags.BoolVar(&debug, "debug", false, "enable debug.")
 	flags.BoolVar(&storePlanStages, "store-plan-stages", false, "Whether to store the plan tags in the report—this is only useful for debugging: should never be used in an actual benchmark.")
 
-	// p50, p95, p99 buckets
+	// p50, p95, p99, p99.9 buckets
 	flags.BoolVar(&p50, "p50", false, "The amount of time to use in bucketing P50—the default is to not include P50 in the chart")
 	flags.BoolVar(&p95, "p95", false, "The amount of time to use in bucketing P95—the default is to not include P95 in the chart")
 	flags.BoolVar(&p99, "p99", false, "The amount of time to use in bucketing P99—the default is to not include P99 in the chart")
+	flags.BoolVar(&p99_9, "p99_9", false, "The amount of time to use in bucketing P99.9—the default is to not include P99.9 in the chart")
 	flags.DurationVar(&percentileWindow, "percentile-window", time.Duration(5.0*float64(time.Second)), "The amount of time to use in bucketing P99—the default is to not include P99 in the chart")
 }
