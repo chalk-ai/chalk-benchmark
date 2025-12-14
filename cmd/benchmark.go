@@ -456,7 +456,7 @@ func mergeReports(reports []*runner.Report) *runner.Report {
 
 	GroupedLatencies := GroupLatencies(timeSortedLatencies, percentileWindow)
 
-	Aggs := CalculatePercentiles(GroupedLatencies, p50, p95, p99)
+	Aggs := CalculatePercentiles(GroupedLatencies, p50, p95, p99, p99_9)
 	slices.SortFunc(Aggs, func(a, b runner.DataPoint) int {
 		return int(a.X - b.X)
 	})
@@ -464,6 +464,7 @@ func mergeReports(reports []*runner.Report) *runner.Report {
 	mergedReport.P99 = p99
 	mergedReport.P95 = p95
 	mergedReport.P50 = p50
+	mergedReport.P99_9 = p99_9
 	return mergedReport
 }
 
@@ -486,18 +487,18 @@ func GroupLatencies(details []runner.ResultDetail, window time.Duration) map[tim
 	return groupedLatencies
 }
 
-func CalculatePercentiles(details map[time.Duration][]float64, p50 bool, p95 bool, p99 bool) []runner.DataPoint {
+func CalculatePercentiles(details map[time.Duration][]float64, p50 bool, p95 bool, p99 bool, p99_9 bool) []runner.DataPoint {
 	var dps []runner.DataPoint
 	for k, d := range details {
 		if len(d) == 0 {
-			dps = append(dps, runner.DataPoint{X: float64(k), Y: runner.DataPointAgg{P50: 0, P95: 0, P99: 0}})
+			dps = append(dps, runner.DataPoint{X: float64(k), Y: runner.DataPointAgg{P50: 0, P95: 0, P99: 0, P99_9: 0}})
 		}
-		dps = append(dps, runner.DataPoint{X: float64(k), Y: CalculatePercentile(d, p50, p95, p99)})
+		dps = append(dps, runner.DataPoint{X: float64(k), Y: CalculatePercentile(d, p50, p95, p99, p99_9)})
 	}
 	return dps
 }
 
-func CalculatePercentile(details []float64, p50 bool, p95 bool, p99 bool) runner.DataPointAgg {
+func CalculatePercentile(details []float64, p50 bool, p95 bool, p99 bool, p99_9 bool) runner.DataPointAgg {
 	var dp runner.DataPointAgg
 	if p50 {
 		p50index := uint(math.Ceil(float64(len(details)) * .5))
@@ -510,6 +511,10 @@ func CalculatePercentile(details []float64, p50 bool, p95 bool, p99 bool) runner
 	if p99 {
 		p99index := uint(math.Ceil(float64(len(details)) * .99))
 		dp.P99 = details[min(p99index, uint(len(details)-1))]
+	}
+	if p99_9 {
+		p99_9index := uint(math.Ceil(float64(len(details)) * .999))
+		dp.P99_9 = details[min(p99_9index, uint(len(details)-1))]
 	}
 	return dp
 }
