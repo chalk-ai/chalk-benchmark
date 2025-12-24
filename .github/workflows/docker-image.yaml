@@ -13,6 +13,11 @@ jobs:
       contents: read
       id-token: write
 
+    env:
+      AWS_ACCOUNT_ID: 754784422779
+      AWS_REGION: us-east-1
+      AWS_GHA_ARN: arn:aws:iam::754784422779:role/chalk-private-github-actions
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -34,6 +39,19 @@ jobs:
         run: |
           gcloud auth configure-docker us-central1-docker.pkg.dev
 
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_GHA_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        run: |
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+
       - name: Build and push Docker image
         run: |
-          docker buildx build --platform linux/amd64 --push -t us-central1-docker.pkg.dev/chalk-infra/public-images/chalk-benchmark:latest .
+          docker buildx build --platform linux/amd64 --push \
+            -t us-central1-docker.pkg.dev/chalk-infra/public-images/chalk-benchmark:latest \
+            -t ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/chalk-benchmark:latest \
+            .
