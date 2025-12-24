@@ -14,9 +14,9 @@ jobs:
       id-token: write
 
     env:
-      AWS_ACCOUNT_ID: ${{ (github.event_name == 'push' && github.ref_name == 'main' && '754784422779') || '317932201237' }}
+      AWS_ACCOUNT_ID: 754784422779
       AWS_REGION: us-east-1
-      AWS_GHA_ARN: ${{ (github.event_name == 'push' && github.ref_name == 'main' && 'arn:aws:iam::754784422779:role/chalk-private-github-actions') || 'arn:aws:iam::317932201237:role/chalk-private-github-actions' }}
+      AWS_GHA_ARN: arn:aws:iam::754784422779:role/chalk-private-github-actions
 
     steps:
       - name: Checkout repository
