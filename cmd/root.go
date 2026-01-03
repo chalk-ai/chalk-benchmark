@@ -134,6 +134,8 @@ var rootCmd = &cobra.Command{
 				rampDuration,
 				scheduleFile,
 				randomSampling,
+				traceSampleRate,
+				authHeaders,
 			)
 		case "query_file":
 			onlineQueryContext := parse.ProcessOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, queryNameVersion, tags, storePlanStages)
@@ -168,6 +170,8 @@ var rootCmd = &cobra.Command{
 				rampDuration,
 				scheduleFile,
 				randomSampling,
+				traceSampleRate,
+				authHeaders,
 			)
 		}
 
@@ -274,6 +278,9 @@ var p99 bool
 var p99_9 bool
 var percentileWindow time.Duration
 
+// trace sampling
+var traceSampleRate float64
+
 func init() {
 	viper.AutomaticEnv()
 	flags := rootCmd.Flags()
@@ -334,4 +341,7 @@ func init() {
 	flags.BoolVar(&p99, "p99", false, "The amount of time to use in bucketing P99—the default is to not include P99 in the chart")
 	flags.BoolVar(&p99_9, "p99_9", false, "The amount of time to use in bucketing P99.9—the default is to not include P99.9 in the chart")
 	flags.DurationVar(&percentileWindow, "percentile-window", time.Duration(5.0*float64(time.Second)), "The amount of time to use in bucketing P99—the default is to not include P99 in the chart")
+
+	// trace sampling
+	flags.Float64Var(&traceSampleRate, "trace-sample-rate", 0.0, "Sample rate for trace collection (0.0-1.0). When set, each request will randomly enable tracing based on this probability.")
 }

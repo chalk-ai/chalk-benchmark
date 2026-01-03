@@ -9,8 +9,10 @@ import (
 	enginev1 "github.com/chalk-ai/chalk-go/gen/chalk/engine/v1"
 	"github.com/chalk-ai/chalk-go/gen/chalk/engine/v1/enginev1connect"
 	"github.com/chalk-ai/ghz/runner"
+	"github.com/google/uuid"
 	"github.com/jhump/protoreflect/desc"
 	"github.com/samber/lo"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 	"io"
 	"math"
@@ -74,58 +76,133 @@ func BenchmarkQuery(
 	rampDuration time.Duration,
 	scheduleFile string,
 	randomSampling bool,
+	traceSampleRate float64,
+	authHeaders map[string]string,
 ) []BenchmarkFunction {
 	// total requests calculated from duration and RPS
 	queryOptions := parse.QueryRateOptions(rps, benchmarkDuration, rampDuration, scheduleFile)
 
-	// If we have multiple inputs, we need to create a requester for each one
-	if len(queryInputs) > 1 {
-		var bfs []BenchmarkFunction
+	// Helper function to create a request (without trace - trace is handled via metadata)
+	createRequest := func(inputBytes []byte) []byte {
+		oqr := commonv1.OnlineQueryBulkRequest{
+			InputsFeather: inputBytes,
+			Outputs:       queryOutputs,
+			Context:       onlineQueryContext,
+		}
+		value, err := proto.Marshal(&oqr)
+		if err != nil {
+			fmt.Printf("Failed to marshal online query request with outputs: '%v', and context '%v'\n", queryOutputs, onlineQueryContext)
+			os.Exit(1)
+		}
+		return value
+	}
 
-		// Pre-marshal all requests to avoid marshaling overhead on each request
-		preMarshaledRequests := make([][]byte, len(queryInputs))
-		for i, inputBytes := range queryInputs {
-			oqr := commonv1.OnlineQueryBulkRequest{
-				InputsFeather: inputBytes,
-				Outputs:       queryOutputs,
-				Context:       onlineQueryContext,
-			}
-			value, err := proto.Marshal(&oqr)
-			if err != nil {
-				fmt.Printf("Failed to marshal online query request with outputs: '%v', and context '%v'\n", queryOutputs, onlineQueryContext)
-				os.Exit(1)
-			}
-			preMarshaledRequests[i] = value
+	// Helper function to create trace metadata based on sample rate
+	// Must include auth headers because WithMetadataProvider replaces all metadata
+	createTraceMetadata := func(cd *runner.CallData) (*metadata.MD, error) {
+		md := metadata.MD{}
+
+		// Always include auth headers
+		for key, value := range authHeaders {
+			md.Set(key, value)
 		}
 
-		// Create a function that either randomly samples or cycles through the pre-marshaled requests
+		// Randomly decide whether to enable tracing based on sample rate
+		if traceSampleRate > 0 && rand.Float64() < traceSampleRate {
+			// Generate trace ID (32 hex chars) and span ID (16 hex chars)
+			traceIdStr := strings.ReplaceAll(uuid.New().String(), "-", "")
+			spanIdStr := strings.ReplaceAll(uuid.New().String(), "-", "")[:16]
+
+			// Create traceparent header (W3C Trace Context format)
+			// Format: version-trace_id-span_id-trace_flags
+			// trace_flags = 01 means sampled
+			traceparent := fmt.Sprintf("00-%s-%s-01", traceIdStr, spanIdStr)
+
+			// Create X-Cloud-Trace-Context header (Google Cloud format)
+			// Format: trace_id/1;o=1 (CLI uses "1" as hardcoded value)
+			// o=1 means sampled
+			cloudTraceContext := fmt.Sprintf("%s/1;o=1", traceIdStr)
+
+			md.Set("traceparent", traceparent)
+			md.Set("x-cloud-trace-context", cloudTraceContext)
+		}
+
+		return &md, nil
+	}
+
+	// If we have multiple inputs or trace sampling is enabled, we need to use binaryDataFunc
+	if len(queryInputs) > 1 || traceSampleRate > 0 {
+		var bfs []BenchmarkFunction
+
+		// If trace sampling is enabled, we can't pre-marshal (need to create each request dynamically)
+		// Otherwise, pre-marshal all requests to avoid marshaling overhead
+		var preMarshaledRequests [][]byte
+		if traceSampleRate == 0 {
+			preMarshaledRequests = make([][]byte, len(queryInputs))
+			for i, inputBytes := range queryInputs {
+				oqr := commonv1.OnlineQueryBulkRequest{
+					InputsFeather: inputBytes,
+					Outputs:       queryOutputs,
+					Context:       onlineQueryContext,
+				}
+				value, err := proto.Marshal(&oqr)
+				if err != nil {
+					fmt.Printf("Failed to marshal online query request with outputs: '%v', and context '%v'\n", queryOutputs, onlineQueryContext)
+					os.Exit(1)
+				}
+				preMarshaledRequests[i] = value
+			}
+		}
+
+		// Create a function that either randomly samples or cycles through inputs
 		currentInputIndex := 0
 		binaryDataFunc := func(mtd *desc.MethodDescriptor, cd *runner.CallData) []byte {
-			var request []byte
+			var inputIndex int
 			if randomSampling {
-				// Randomly select from pre-marshaled requests
-				randomIndex := rand.Intn(len(preMarshaledRequests))
-				request = preMarshaledRequests[randomIndex]
+				inputIndex = rand.Intn(len(queryInputs))
 			} else {
-				// Cycle through requests sequentially
-				request = preMarshaledRequests[currentInputIndex]
-				currentInputIndex = (currentInputIndex + 1) % len(preMarshaledRequests)
+				inputIndex = currentInputIndex
+				currentInputIndex = (currentInputIndex + 1) % len(queryInputs)
 			}
-			return request
+
+			// If trace sampling is enabled, create request dynamically
+			if traceSampleRate > 0 {
+				return createRequest(queryInputs[inputIndex])
+			}
+
+			// Otherwise use pre-marshaled request
+			return preMarshaledRequests[inputIndex]
 		}
 
 		// Create BenchmarkFunctions for each query option
 		for _, queryOption := range queryOptions {
-			runConfig, err := runner.NewConfig(
-				strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryBulkProcedure, "/"),
-				grpcHost,
-				slices.Concat(
+			// Build runner options - note: we always include metadata provider if tracing is enabled
+			// because it needs to be evaluated per-request
+			var runnerOptions []runner.Option
+
+			if traceSampleRate > 0 {
+				runnerOptions = slices.Concat(
+					globalHeaders,
+					queryOption.Options,
+					[]runner.Option{
+						runner.WithBinaryDataFunc(binaryDataFunc),
+						runner.WithMetadataProvider(createTraceMetadata),
+					},
+				)
+			} else {
+				runnerOptions = slices.Concat(
 					globalHeaders,
 					queryOption.Options,
 					[]runner.Option{
 						runner.WithBinaryDataFunc(binaryDataFunc),
 					},
-				)...,
+				)
+			}
+
+			runConfig, err := runner.NewConfig(
+				strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryBulkProcedure, "/"),
+				grpcHost,
+				runnerOptions...,
 			)
 			if err != nil {
 				fmt.Printf("Failed to create run config with err: %s\n", err)
