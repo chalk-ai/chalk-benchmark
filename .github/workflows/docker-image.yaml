@@ -17,6 +17,7 @@ jobs:
       AWS_ACCOUNT_ID: 754784422779
       AWS_REGION: us-east-1
       AWS_GHA_ARN: arn:aws:iam::754784422779:role/chalk-private-github-actions
+      AWS_API_SERVER_ARN: arn:aws:iam::754784422779:role/chalk-api-server
 
     steps:
       - name: Checkout repository
@@ -44,6 +45,14 @@ jobs:
         with:
           role-to-assume: ${{ env.AWS_GHA_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+
+      # Need to role chain to role that has GetAuthorizationToken
+      - name: Assume chained role for ECR access
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_API_SERVER_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-chaining: true
 
       - name: Login to Amazon ECR
         run: |
