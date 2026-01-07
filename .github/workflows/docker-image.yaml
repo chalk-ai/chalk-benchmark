@@ -53,6 +53,7 @@ jobs:
           role-to-assume: ${{ env.AWS_API_SERVER_ARN }}
           aws-region: ${{ env.AWS_REGION }}
           role-chaining: true
+          role-skip-session-tagging: true
 
       - name: Login to Amazon ECR
         run: |
