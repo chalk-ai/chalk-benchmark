@@ -54,6 +54,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-chaining: true
           role-skip-session-tagging: true
+          retry-max-attempts: 6
 
       - name: Login to Amazon ECR
         run: |
