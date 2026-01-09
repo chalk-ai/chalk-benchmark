@@ -506,7 +506,7 @@ func mergeReports(reports []*runner.Report) *runner.Report {
 		okLats = append(okLats, d.Latency.Seconds())
 	}
 	sort.Slice(okLats, func(i, j int) bool { return okLats[i] < okLats[j] })
-	mergedReport.LatencyDistribution = runner.Latencies(okLats)
+	mergedReport.LatencyDistribution = runner.Latencies(okLats, p99_9)
 	idx := slices.IndexFunc(mergedReport.LatencyDistribution, func(l runner.LatencyDistribution) bool {
 		return l.Percentage == 99
 	})
@@ -516,7 +516,16 @@ func mergeReports(reports []*runner.Report) *runner.Report {
 	} else {
 		p99Average = mergedReport.LatencyDistribution[idx].Latency.Seconds()
 	}
-	mergedReport.Histogram = runner.Histogram(okLats, mergedReport.Slowest.Seconds(), mergedReport.Fastest.Seconds(), p99Average)
+	idx99_9 := slices.IndexFunc(mergedReport.LatencyDistribution, func(l runner.LatencyDistribution) bool {
+		return l.Percentage == 99.9
+ 	})
+	var p99_9Average float64
+	if idx99_9 == -1 {
+		p99_9Average = mergedReport.Slowest.Seconds()
+ 	} else {
+ 	    p99_9Average = mergedReport.LatencyDistribution[idx99_9].Latency.Seconds()
+	}
+	mergedReport.Histogram = runner.Histogram(okLats, mergedReport.Slowest.Seconds(), mergedReport.Fastest.Seconds(), p99Average, p99_9Average)
 	timeSortedLatencies := mergedReport.Details
 	slices.SortFunc(timeSortedLatencies, func(a, b runner.ResultDetail) int {
 		return int(a.Timestamp.Sub(b.Timestamp))
