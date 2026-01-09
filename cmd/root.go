@@ -99,6 +99,7 @@ var rootCmd = &cobra.Command{
 			runner.WithConcurrency(concurrency),
 			runner.WithInsecure(insecureQueryHost),
 			runner.WithSkipTLSVerify(skipTLS),
+			runner.WithP99_9(p99_9),
 		}
 		slog.Debug(fmt.Sprintf("numConnections: %s, timeout: %s, concurrency: %s, insecure: %b, skipTLSVerify: %b", numConnections, timeout, concurrency, insecureQueryHost, skipTLS))
 
@@ -339,7 +340,8 @@ func init() {
 	flags.BoolVar(&p50, "p50", false, "The amount of time to use in bucketing P50—the default is to not include P50 in the chart")
 	flags.BoolVar(&p95, "p95", false, "The amount of time to use in bucketing P95—the default is to not include P95 in the chart")
 	flags.BoolVar(&p99, "p99", false, "The amount of time to use in bucketing P99—the default is to not include P99 in the chart")
-	flags.BoolVar(&p99_9, "p99_9", false, "The amount of time to use in bucketing P99.9—the default is to not include P99.9 in the chart")
+	// Due to the nature of using such a high percentile with rounding/truncating + time measurements, it's recommended to use this with benchmarks > 1k queries total, ideally > 10k.
+	flags.BoolVar(&p99_9, "p99_9", false, "Determines whether or not to calculate p99.9 in the results. Also the amount of time to use in bucketing P99.9—the default is to not include P99.9 in the chart")
 	flags.DurationVar(&percentileWindow, "percentile-window", time.Duration(5.0*float64(time.Second)), "The amount of time to use in bucketing P99—the default is to not include P99 in the chart")
 
 	// trace sampling
