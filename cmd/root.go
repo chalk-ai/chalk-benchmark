@@ -109,7 +109,7 @@ var rootCmd = &cobra.Command{
 		var benchmarkRunner []BenchmarkFunction
 		var result *runner.Report
 
-		switch lo.Ternary(test, "test", lo.Ternary(uploadFeatures, "upload", lo.Ternary(inputJSONFile != "", "query_json", lo.Ternary(inputFile != "", "query_file", "query")))) {
+		switch lo.Ternary(test, "test", lo.Ternary(uploadFeatures, "upload", lo.Ternary(inputFile != "", "query_file", "query"))) {
 		case "test":
 			benchmarkRunner = BenchmarkPing(grpcHost, globalHeaders)
 		case "upload":
@@ -120,30 +120,6 @@ var rootCmd = &cobra.Command{
 				rps,
 				benchmarkDuration,
 				rampDuration,
-			)
-		case "query_json":
-			// JSON files are converted to parquet and then loaded
-			// (parquet is more efficient than JSON for this use case)
-			onlineQueryContext := parse.ProcessOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, queryNameVersion, tags, storePlanStages)
-			queryOutputs := parse.ProcessOutputs(output)
-
-			// Process JSON inputs to get IPC bytes, then wrap in a simple input source
-			queryInputsList := parse.ProcessJSONInputs(inputJSONFile)
-			inputSource, err := parse.NewCLIInputSourceFromBytes(queryInputsList, queryOutputs, onlineQueryContext)
-			if err != nil {
-				fmt.Printf("Failed to create input source from JSON: %s\n", err)
-				os.Exit(1)
-			}
-
-			benchmarkRunner = BenchmarkQuery(
-				grpcHost,
-				globalHeaders,
-				inputSource,
-				rps,
-				benchmarkDuration,
-				rampDuration,
-				traceSampleRate,
-				authHeaders,
 			)
 		case "query_file":
 			onlineQueryContext := parse.ProcessOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, queryNameVersion, tags, storePlanStages)
@@ -288,7 +264,6 @@ var inputRaw []string
 var inputStr map[string]string
 var inputNum map[string]int64
 var inputFile string
-var inputJSONFile string
 var randomSampling bool
 var pkeys []string
 var output []string
@@ -356,7 +331,6 @@ func init() {
 	// input & output parameters
 	flags.StringArrayVar(&inputRaw, "in", nil, "input features to the online query, for instance: 'user.id=xwdw' or 'user.name=John'. This flag will try to convert inputs to the right type. Supports array notation like 'user.id=[1,2,3,4]' for multiple values. Can be specified multiple times. If you need to explicitly pass in a number or string, use the `in-num` or `in-str` flag.")
 	flags.StringVar(&inputFile, "in_file", "", "input features to the online query through a parquet file—columns should be valid feature names")
-	flags.StringVar(&inputJSONFile, "in_json", "", "input features to the online query through a JSON file containing a list of objects—each object represents one query with feature names as keys")
 	flags.BoolVar(&randomSampling, "random_sampling", false, "when enabled, randomly samples from the pre-encoded input list instead of cycling through sequentially")
 	flags.BoolVar(&prematerialize, "prematerialize", false, "when enabled with parquet input, loads all batches into memory at startup for minimal latency (default: lazy loading with circular buffer)")
 	flags.IntVar(&lazyLoadBufferSize, "lazy_load_buffer_size", 100, "number of batches to keep in memory when using lazy loading for parquet files")

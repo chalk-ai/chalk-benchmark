@@ -72,3 +72,42 @@ func (s *CLIInputSource) Next() ([]byte, error) {
 func (s *CLIInputSource) Close() error {
 	return nil
 }
+
+// NewCLIInputSourceFromBytes creates a new CLI input source from pre-marshalled IPC bytes.
+// This is useful when you already have IPC bytes (e.g., from JSON inputs) and just need
+// to wrap them with outputs and context into OnlineQueryBulkRequest messages.
+func NewCLIInputSourceFromBytes(
+	batchIPCBytes [][]byte,
+	outputs []*commonv1.OutputExpr,
+	context *commonv1.OnlineQueryContext,
+) (*CLIInputSource, error) {
+	if len(batchIPCBytes) == 0 {
+		return nil, fmt.Errorf("no batches provided")
+	}
+
+	fmt.Printf("Creating input source from %d pre-encoded batches\n", len(batchIPCBytes))
+
+	// Pre-marshal all OnlineQueryBulkRequest messages
+	marshaledRequests := make([][]byte, len(batchIPCBytes))
+	for i, ipcBytes := range batchIPCBytes {
+		oqr := commonv1.OnlineQueryBulkRequest{
+			InputsFeather: ipcBytes,
+			Outputs:       outputs,
+			Context:       context,
+		}
+
+		marshaledBytes, err := proto.Marshal(&oqr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request %d: %w", i, err)
+		}
+
+		marshaledRequests[i] = marshaledBytes
+	}
+
+	source := &CLIInputSource{
+		marshaledRequests: marshaledRequests,
+	}
+	source.requestIndex.Store(0)
+
+	return source, nil
+}
