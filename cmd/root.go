@@ -87,6 +87,9 @@ var rootCmd = &cobra.Command{
 			"x-chalk-env-id":          targetEnvironment,
 			"x-chalk-deployment-type": "engine-grpc",
 		}
+		if resourceGroup != "" {
+			authHeaders["x-chalk-resource-group"] = resourceGroup
+		}
 
 		globalHeaders := []runner.Option{
 			runner.WithMetadata(authHeaders),
@@ -242,6 +245,7 @@ var queryHost string
 var environment string
 var clientId string
 var clientSecret string
+var resourceGroup string
 
 // input & output parameters
 var input map[string]string
@@ -309,6 +313,7 @@ func init() {
 	flags.StringVar(&environment, "environment", "", "Environment for the client.")
 	flags.StringVarP(&clientId, "client_id", "c", os.Getenv("CHALK_CLIENT_ID"), "client_id for your environment.")
 	flags.StringVarP(&clientSecret, "client_secret", "s", os.Getenv("CHALK_CLIENT_SECRET"), "client_secret for your environment.")
+	flags.StringVar(&resourceGroup, "resource-group", "", "Resource group to add as x-chalk-resource-group header.")
 
 	// input & output parameters
 	flags.StringArrayVar(&inputRaw, "in", nil, "input features to the online query, for instance: 'user.id=xwdw' or 'user.name=John'. This flag will try to convert inputs to the right type. Supports array notation like 'user.id=[1,2,3,4]' for multiple values. Can be specified multiple times. If you need to explicitly pass in a number or string, use the `in-num` or `in-str` flag.")
