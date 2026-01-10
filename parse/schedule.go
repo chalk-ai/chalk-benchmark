@@ -2,45 +2,76 @@ package parse
 
 import (
 	"fmt"
+	"github.com/chalk-ai/ghz/load"
 	"github.com/chalk-ai/ghz/runner"
-	"github.com/goccy/go-json"
-	_ "github.com/goccy/go-json"
 	"math"
 	"os"
 	"slices"
+	"strconv"
+	"strings"
 	"time"
 )
 
 const DefaultLoadRampStart = 2
 
-type StepPacer struct {
-	StepSize     int64  `json:"step_size"`
-	StepStart    uint64 `json:"step_start"`
-	Duration     string `json:"duration"`
-	StepDuration string `json:"step_duration"`
-}
-
-type ConstPacer struct {
-	RPS      uint64 `json:"rps"`
-	Duration string `json:"duration"`
-}
-
-type RawPipelineStep struct {
-	Type   string           `json:"type"`
-	Params *json.RawMessage `json:"params"`
-}
-
-func ReadJSONFile(filePath string) []byte {
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		fmt.Printf("Failed to open schedule file with err: %v", err)
-		os.Exit(1)
+// ParseLoadSegments parses a load pattern string like "1h@1000,30m@2000,2h@500"
+// Format: <duration>@<rps>,<duration>@<rps>,...
+// Returns nil if the string is not in the expected format
+func ParseLoadSegments(s string) ([]load.LoadSegment, error) {
+	// Check if it contains the @ symbol (our syntax marker)
+	if !strings.Contains(s, "@") {
+		return nil, nil
 	}
-	if err != nil {
-		fmt.Printf("Failed to read schedule file with err: %v", err)
-		os.Exit(1)
+
+	segments := []load.LoadSegment{}
+	parts := strings.Split(s, ",")
+
+	for i, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		// Split by @ to get duration and RPS
+		atParts := strings.Split(part, "@")
+		if len(atParts) != 2 {
+			return nil, fmt.Errorf("segment %d: expected format '<duration>@<rps>', got '%s'", i+1, part)
+		}
+
+		durationStr := strings.TrimSpace(atParts[0])
+		rpsStr := strings.TrimSpace(atParts[1])
+
+		// Parse duration
+		duration, err := time.ParseDuration(durationStr)
+		if err != nil {
+			return nil, fmt.Errorf("segment %d: failed to parse duration '%s': %w", i+1, durationStr, err)
+		}
+
+		if duration <= 0 {
+			return nil, fmt.Errorf("segment %d: duration must be positive, got %s", i+1, duration)
+		}
+
+		// Parse RPS
+		rpsValue, err := strconv.ParseFloat(rpsStr, 64)
+		if err != nil {
+			return nil, fmt.Errorf("segment %d: failed to parse RPS value '%s': %w", i+1, rpsStr, err)
+		}
+
+		if rpsValue < 0 {
+			return nil, fmt.Errorf("segment %d: RPS must be non-negative, got %f", i+1, rpsValue)
+		}
+
+		segments = append(segments, load.LoadSegment{
+			RPS:      rpsValue,
+			Duration: duration,
+		})
 	}
-	return data
+
+	if len(segments) == 0 {
+		return nil, fmt.Errorf("no valid segments found in '%s'", s)
+	}
+
+	return segments, nil
 }
 
 type QueryRun struct {
@@ -49,95 +80,53 @@ type QueryRun struct {
 	Type     string
 }
 
-func ParseScheduleFile(scheduleFile string, rampDuration time.Duration) []QueryRun {
-	var queryRuns []QueryRun
-	jsonFileData := ReadJSONFile(scheduleFile)
-
-	var pipelineSteps []RawPipelineStep
-	// defer the closing of our jsonFile so that we can parse it later on
-
-	if err := json.Unmarshal(jsonFileData, &pipelineSteps); err != nil {
-		fmt.Println("Failed to unmarshal schedule file with err: ", err)
+func QueryRateOptions(rpsStr string, benchmarkDuration time.Duration, rampDuration time.Duration) []QueryRun {
+	// Try to parse as load segments first (e.g., "1h@1000,30m@2000")
+	segments, err := ParseLoadSegments(rpsStr)
+	if err != nil {
+		fmt.Printf("Failed to parse load segments: %v\n", err)
 		os.Exit(1)
 	}
-	for i, step := range pipelineSteps {
-		switch step.Type {
-		case "step":
-			var sp StepPacer
-			if err := json.Unmarshal(*step.Params, &sp); err != nil {
-				fmt.Printf("Failed to unmarshal step pacer: %v, with err: %s", step.Params, err)
-				os.Exit(1)
-			}
-			stepTime, err := time.ParseDuration(sp.Duration)
-			if err != nil {
-				fmt.Printf("Failed to parse duration of %v: %s", step.Params, sp.Duration)
-				os.Exit(1)
-			}
-			singleStepTime, err := time.ParseDuration(sp.StepDuration)
-			if err != nil {
-				fmt.Printf("Failed to parse step duration of %v: %s", step.Params, sp.StepDuration)
-				os.Exit(1)
-			}
-			numSteps := math.Ceil(float64(stepTime) / float64(singleStepTime))
-			numRequests := uint(numSteps * (2*float64(sp.StepStart) + float64(sp.StepSize-1)) * float64(sp.StepSize))
-			queryRuns = append(
-				queryRuns,
-				QueryRun{
-					Options: []runner.Option{
-						runner.WithTotalRequests(numRequests),
-						runner.WithLoadStep(int(sp.StepSize)),
-						runner.WithLoadStepDuration(singleStepTime),
-						runner.WithLoadStart(uint(sp.StepStart)),
-					},
-					Duration: stepTime,
-					Type:     fmt.Sprintf("Step[NumRequests=%d, StepSize=%d]", numRequests, sp.StepSize),
+
+	// If we found segments, use SegmentedPacer
+	if segments != nil {
+		pacer := &load.SegmentedPacer{
+			Segments: segments,
+		}
+
+		// Calculate total duration and requests
+		var totalDuration time.Duration
+		var totalRequests uint
+		for _, seg := range segments {
+			totalDuration += seg.Duration
+			totalRequests += uint(seg.RPS * seg.Duration.Seconds())
+		}
+
+		return []QueryRun{
+			{
+				Options: []runner.Option{
+					runner.WithPacer(pacer),
+					runner.WithTotalRequests(totalRequests),
 				},
-			)
-		case "const":
-			var cp ConstPacer
-			if err := json.Unmarshal(*step.Params, &cp); err != nil {
-				fmt.Printf("Failed to unmarshal step pacer: %v, with err: %s", step.Params, err)
-				os.Exit(1)
-			}
-			stepTime, err := time.ParseDuration(cp.Duration)
-			if err != nil {
-				fmt.Printf("Failed to parse duration of %v: %s", step.Params, cp.Duration)
-				os.Exit(1)
-			}
-			if i == 0 && rampDuration != time.Duration(0) {
-				queryRuns = QueryRateOptions(uint(cp.RPS), stepTime, rampDuration, "")
-				continue
-			}
-			numRequests := uint(float64(cp.RPS) * stepTime.Seconds())
-			queryRuns = append(
-				queryRuns,
-				QueryRun{
-					Options: []runner.Option{
-						runner.WithTotalRequests(numRequests),
-						runner.WithRPS(uint(cp.RPS)),
-					},
-					Duration: stepTime,
-					Type:     fmt.Sprintf("Running for %s at %d requests/second [%d queries]", stepTime, cp.RPS, numRequests),
-				},
-			)
-		default:
-			fmt.Printf("Got unknown pipeline step type: %q", step.Type)
-			os.Exit(1)
+				Duration: totalDuration,
+				Type:     fmt.Sprintf("Segmented load: %d segments over %s [%d total queries]", len(segments), totalDuration, totalRequests),
+			},
 		}
 	}
-	return queryRuns
-}
 
-func QueryRateOptions(rps uint, benchmarkDuration time.Duration, rampDuration time.Duration, scheduleFile string) []QueryRun {
-	if scheduleFile != "" {
-		return ParseScheduleFile(scheduleFile, rampDuration)
+	// Otherwise parse as a simple integer RPS
+	rps, err := strconv.ParseUint(rpsStr, 10, 64)
+	if err != nil {
+		fmt.Printf("Failed to parse RPS value '%s': %v\n", rpsStr, err)
+		os.Exit(1)
 	}
+
 	queryRunOptions := []runner.Option{
-		runner.WithRPS(rps),
+		runner.WithRPS(uint(rps)),
 	}
 	var durationSeconds uint
 	durationSeconds = uint(math.Ceil(float64(benchmarkDuration / time.Second)))
-	totalRequests := uint(float64(durationSeconds * rps))
+	totalRequests := uint(float64(durationSeconds) * float64(rps))
 
 	if rampDuration != time.Duration(0) {
 		rampDurationSeconds := uint(math.Floor(float64(rampDuration / time.Second)))
@@ -150,7 +139,7 @@ func QueryRateOptions(rps uint, benchmarkDuration time.Duration, rampDuration ti
 						queryRunOptions,
 						[]runner.Option{
 							runner.WithTotalRequests(totalRequests),
-							runner.WithRPS(rps),
+							runner.WithRPS(uint(rps)),
 						},
 					),
 					Duration: benchmarkDuration,

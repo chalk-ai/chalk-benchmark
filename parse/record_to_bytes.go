@@ -65,3 +65,22 @@ func recordToBytes(record arrow.Record) ([]byte, error) {
 	record.Release()
 	return bws.Bytes(), nil
 }
+
+// RecordToBytes converts an Arrow record to IPC bytes
+// Note: This function does NOT release the record - the caller is responsible for lifecycle management
+func RecordToBytes(record arrow.Record) ([]byte, error) {
+	bws := &BufferWriteSeeker{}
+	fileWriter, err := ipc.NewFileWriter(
+		bws,
+		ipc.WithSchema(record.Schema()),
+	)
+	err = fileWriter.Write(record)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write Arrow Table to request: %w", err)
+	}
+	err = fileWriter.Close()
+	if err != nil {
+		return nil, fmt.Errorf("failed to close Arrow Table writer: %w", err)
+	}
+	return bws.Bytes(), nil
+}

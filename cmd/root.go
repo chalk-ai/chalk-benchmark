@@ -120,24 +120,28 @@ var rootCmd = &cobra.Command{
 				rps,
 				benchmarkDuration,
 				rampDuration,
-				scheduleFile,
 			)
 		case "query_json":
+			// JSON files are converted to parquet and then loaded
+			// (parquet is more efficient than JSON for this use case)
 			onlineQueryContext := parse.ProcessOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, queryNameVersion, tags, storePlanStages)
 			queryOutputs := parse.ProcessOutputs(output)
+
+			// Process JSON inputs to get IPC bytes, then wrap in a simple input source
 			queryInputsList := parse.ProcessJSONInputs(inputJSONFile)
+			inputSource, err := parse.NewCLIInputSourceFromBytes(queryInputsList, queryOutputs, onlineQueryContext)
+			if err != nil {
+				fmt.Printf("Failed to create input source from JSON: %s\n", err)
+				os.Exit(1)
+			}
 
 			benchmarkRunner = BenchmarkQuery(
 				grpcHost,
 				globalHeaders,
-				queryInputsList,
-				queryOutputs,
-				onlineQueryContext,
+				inputSource,
 				rps,
 				benchmarkDuration,
 				rampDuration,
-				scheduleFile,
-				randomSampling,
 				traceSampleRate,
 				authHeaders,
 			)
@@ -145,36 +149,68 @@ var rootCmd = &cobra.Command{
 			onlineQueryContext := parse.ProcessOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, queryNameVersion, tags, storePlanStages)
 			queryOutputs := parse.ProcessOutputs(output)
 
-			benchmarkRunner = BenchmarkQueryFromFile(
+			// Create parquet input source (lazy or pre-materialized)
+			var inputSource parse.InputSource
+			var err error
+			if prematerialize {
+				inputSource, err = parse.NewPreMaterializedParquetInputSource(
+					inputFile,
+					chunkSize,
+					queryOutputs,
+					onlineQueryContext,
+				)
+			} else {
+				inputSource, err = parse.NewLazyParquetInputSource(
+					inputFile,
+					chunkSize,
+					lazyLoadBufferSize,
+					queryOutputs,
+					onlineQueryContext,
+				)
+			}
+			if err != nil {
+				fmt.Printf("Failed to create parquet input source: %s\n", err)
+				os.Exit(1)
+			}
+
+			benchmarkRunner = BenchmarkQuery(
 				grpcHost,
 				globalHeaders,
-				inputFile,
-				queryOutputs,
-				onlineQueryContext,
+				inputSource,
 				rps,
 				benchmarkDuration,
 				rampDuration,
-				scheduleFile,
-				chunkSize,
+					traceSampleRate,
+				authHeaders,
 			)
 		case "query":
 			// Parse inputRaw into input map
 			input = parseInputArray(inputRaw)
-			queryInputsList := parse.ProcessInputs(inputStr, inputNum, input, chunkSize)
-			queryOutputs := parse.ProcessOutputs(output)
 			onlineQueryContext := parse.ProcessOnlineQueryContext(useNativeSql, staticUnderscoreExprs, queryName, queryNameVersion, tags, storePlanStages)
+			queryOutputs := parse.ProcessOutputs(output)
+
+			// Create CLI input source
+			inputSource, err := parse.NewCLIInputSource(
+				inputStr,
+				inputNum,
+				input,
+				chunkSize,
+				queryOutputs,
+				onlineQueryContext,
+			)
+			if err != nil {
+				fmt.Printf("Failed to create CLI input source: %s\n", err)
+				os.Exit(1)
+			}
+
 			benchmarkRunner = BenchmarkQuery(
 				grpcHost,
 				globalHeaders,
-				queryInputsList,
-				queryOutputs,
-				onlineQueryContext,
+				inputSource,
 				rps,
 				benchmarkDuration,
 				rampDuration,
-				scheduleFile,
-				randomSampling,
-				traceSampleRate,
+					traceSampleRate,
 				authHeaders,
 			)
 		}
@@ -226,7 +262,7 @@ func parseInputArray(inputRaw []string) map[string]string {
 
 // benchmark parameters
 var test bool
-var rps uint
+var rps string
 var benchmarkDuration time.Duration
 var rampDuration time.Duration
 var numConnections uint
@@ -234,7 +270,6 @@ var concurrency uint
 var timeout time.Duration
 var outputFile string
 var jsonOutputFile string
-var scheduleFile string
 var chunkSize int64
 
 // environment & client parameters
@@ -286,6 +321,10 @@ var percentileWindow time.Duration
 // trace sampling
 var traceSampleRate float64
 
+// input source options
+var prematerialize bool
+var lazyLoadBufferSize int
+
 func init() {
 	viper.AutomaticEnv()
 	flags := rootCmd.Flags()
@@ -293,7 +332,7 @@ func init() {
 
 	// benchmark parameters
 	flags.BoolVarP(&test, "test", "t", false, "Ping the GRPC engine to make sure the benchmarking tool can reach the engine.")
-	flags.UintVarP(&rps, "rps", "r", 1, "Number of requests to execute per second against the engine.")
+	flags.StringVarP(&rps, "rps", "r", "1", "Number of requests per second. Can be a number (e.g., '1000') or a time-varying load pattern (e.g., '1h@1000,30m@2000').")
 	flags.DurationVarP(&benchmarkDuration, "duration", "d", time.Duration(60.0*float64(time.Second)), "Amount of time to run the ramp up for the benchmark (only applies if the RPS>20)")
 	flags.DurationVar(&rampDuration, "ramp_duration", time.Duration(0*float64(time.Second)), "Amount of time to run the benchmark (for example, '60s').")
 	flags.UintVar(&numConnections, "num_connections", 16, "The number of gRPC connections used by the tool.")
@@ -302,7 +341,6 @@ func init() {
 	flags.StringVar(&outputFile, "output_file", "result.html", "Output filename for the saved report.")
 	flags.StringVar(&jsonOutputFile, "json_output_file", "", "If specified, save the report as an additional file in JSON format.")
 	flags.StringVar(&token, "token", os.Getenv("CHALK_BENCHMARK_TOKEN"), "jwt to use for the request—if this is provided the client_id and client_secret will be ignored.")
-	flags.StringVar(&scheduleFile, "schedule_file", "", "Provide the schedule for the benchmark query as a JSON file.")
 	flags.Int64Var(&chunkSize, "chunk_size", 1, "Only matters if a parquet input file has been provided. Runs queries on chunks of the parquet data.")
 
 	// environment & client parameters
@@ -320,6 +358,8 @@ func init() {
 	flags.StringVar(&inputFile, "in_file", "", "input features to the online query through a parquet file—columns should be valid feature names")
 	flags.StringVar(&inputJSONFile, "in_json", "", "input features to the online query through a JSON file containing a list of objects—each object represents one query with feature names as keys")
 	flags.BoolVar(&randomSampling, "random_sampling", false, "when enabled, randomly samples from the pre-encoded input list instead of cycling through sequentially")
+	flags.BoolVar(&prematerialize, "prematerialize", false, "when enabled with parquet input, loads all batches into memory at startup for minimal latency (default: lazy loading with circular buffer)")
+	flags.IntVar(&lazyLoadBufferSize, "lazy_load_buffer_size", 100, "number of batches to keep in memory when using lazy loading for parquet files")
 	flags.StringToStringVar(&inputStr, "in_str", nil, "string input features to the online query, for instance: 'user.id=xwdw,user.name'John'. Supports array notation like 'user.id=[a,b,c,d]' for multiple values.")
 	flags.StringToInt64Var(&inputNum, "in_num", nil, "numeric input features to the online query, for instance 'user.id=1,user.age=28'. Note that array notation is supported in the --in flag for numeric arrays.")
 	flags.StringArrayVar(&output, "out", nil, "target output features for the online query, for instance: 'user.is_fraud'.")
