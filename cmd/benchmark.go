@@ -1,19 +1,7 @@
 package cmd
 
 import (
-	"bytes"
 	"fmt"
-	"github.com/apache/arrow/go/v17/arrow/ipc"
-	"github.com/chalk-ai/chalk-benchmark/parse"
-	commonv1 "github.com/chalk-ai/chalk-go/gen/chalk/common/v1"
-	enginev1 "github.com/chalk-ai/chalk-go/gen/chalk/engine/v1"
-	"github.com/chalk-ai/chalk-go/gen/chalk/engine/v1/enginev1connect"
-	"github.com/chalk-ai/ghz/runner"
-	"github.com/google/uuid"
-	"github.com/jhump/protoreflect/desc"
-	"github.com/samber/lo"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/protobuf/proto"
 	"io"
 	"math"
 	"math/rand"
@@ -25,12 +13,24 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/chalk-ai/chalk-benchmark/parse"
+	commonv1 "github.com/chalk-ai/chalk-go/gen/chalk/common/v1"
+	enginev1 "github.com/chalk-ai/chalk-go/gen/chalk/engine/v1"
+	"github.com/chalk-ai/chalk-go/gen/chalk/engine/v1/enginev1connect"
+	"github.com/chalk-ai/ghz/runner"
+	"github.com/google/uuid"
+	"github.com/jhump/protoreflect/desc"
+	"github.com/samber/lo"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/proto"
 )
 
 type BenchmarkFunction struct {
 	F        *runner.Requester
 	Duration time.Duration
 	Type     string
+	Cleanup  func() error // Optional cleanup function
 }
 
 func BenchmarkPing(grpcHost string, authHeaders []runner.Option) []BenchmarkFunction {
@@ -68,34 +68,15 @@ func BenchmarkPing(grpcHost string, authHeaders []runner.Option) []BenchmarkFunc
 func BenchmarkQuery(
 	grpcHost string,
 	globalHeaders []runner.Option,
-	queryInputs [][]byte, // Changed from []byte to [][]byte to support multiple inputs
-	queryOutputs []*commonv1.OutputExpr,
-	onlineQueryContext *commonv1.OnlineQueryContext,
-	rps uint,
+	inputSource parse.InputSource,
+	rps string,
 	benchmarkDuration time.Duration,
 	rampDuration time.Duration,
-	scheduleFile string,
-	randomSampling bool,
 	traceSampleRate float64,
 	authHeaders map[string]string,
 ) []BenchmarkFunction {
 	// total requests calculated from duration and RPS
-	queryOptions := parse.QueryRateOptions(rps, benchmarkDuration, rampDuration, scheduleFile)
-
-	// Helper function to create a request (without trace - trace is handled via metadata)
-	createRequest := func(inputBytes []byte) []byte {
-		oqr := commonv1.OnlineQueryBulkRequest{
-			InputsFeather: inputBytes,
-			Outputs:       queryOutputs,
-			Context:       onlineQueryContext,
-		}
-		value, err := proto.Marshal(&oqr)
-		if err != nil {
-			fmt.Printf("Failed to marshal online query request with outputs: '%v', and context '%v'\n", queryOutputs, onlineQueryContext)
-			os.Exit(1)
-		}
-		return value
-	}
+	queryOptions := parse.QueryRateOptions(rps, benchmarkDuration, rampDuration)
 
 	// Helper function to create trace metadata based on sample rate
 	// Must include auth headers because WithMetadataProvider replaces all metadata
@@ -130,228 +111,46 @@ func BenchmarkQuery(
 		return &md, nil
 	}
 
-	// If we have multiple inputs or trace sampling is enabled, we need to use binaryDataFunc
-	if len(queryInputs) > 1 || traceSampleRate > 0 {
-		var bfs []BenchmarkFunction
-
-		// If trace sampling is enabled, we can't pre-marshal (need to create each request dynamically)
-		// Otherwise, pre-marshal all requests to avoid marshaling overhead
-		var preMarshaledRequests [][]byte
-		if traceSampleRate == 0 {
-			preMarshaledRequests = make([][]byte, len(queryInputs))
-			for i, inputBytes := range queryInputs {
-				oqr := commonv1.OnlineQueryBulkRequest{
-					InputsFeather: inputBytes,
-					Outputs:       queryOutputs,
-					Context:       onlineQueryContext,
-				}
-				value, err := proto.Marshal(&oqr)
-				if err != nil {
-					fmt.Printf("Failed to marshal online query request with outputs: '%v', and context '%v'\n", queryOutputs, onlineQueryContext)
-					os.Exit(1)
-				}
-				preMarshaledRequests[i] = value
-			}
+	// Binary data function that calls inputSource.Next()
+	// This is thread-safe and optimized for high throughput
+	binaryDataFunc := func(mtd *desc.MethodDescriptor, cd *runner.CallData) []byte {
+		data, err := inputSource.Next()
+		if err != nil {
+			fmt.Printf("Failed to get next input: %s\n", err)
+			os.Exit(1)
 		}
-
-		// Create a function that either randomly samples or cycles through inputs
-		currentInputIndex := 0
-		binaryDataFunc := func(mtd *desc.MethodDescriptor, cd *runner.CallData) []byte {
-			var inputIndex int
-			if randomSampling {
-				inputIndex = rand.Intn(len(queryInputs))
-			} else {
-				inputIndex = currentInputIndex
-				currentInputIndex = (currentInputIndex + 1) % len(queryInputs)
-			}
-
-			// If trace sampling is enabled, create request dynamically
-			if traceSampleRate > 0 {
-				return createRequest(queryInputs[inputIndex])
-			}
-
-			// Otherwise use pre-marshaled request
-			return preMarshaledRequests[inputIndex]
-		}
-
-		// Create BenchmarkFunctions for each query option
-		for _, queryOption := range queryOptions {
-			// Build runner options - note: we always include metadata provider if tracing is enabled
-			// because it needs to be evaluated per-request
-			var runnerOptions []runner.Option
-
-			if traceSampleRate > 0 {
-				runnerOptions = slices.Concat(
-					globalHeaders,
-					queryOption.Options,
-					[]runner.Option{
-						runner.WithBinaryDataFunc(binaryDataFunc),
-						runner.WithMetadataProvider(createTraceMetadata),
-					},
-				)
-			} else {
-				runnerOptions = slices.Concat(
-					globalHeaders,
-					queryOption.Options,
-					[]runner.Option{
-						runner.WithBinaryDataFunc(binaryDataFunc),
-					},
-				)
-			}
-
-			runConfig, err := runner.NewConfig(
-				strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryBulkProcedure, "/"),
-				grpcHost,
-				runnerOptions...,
-			)
-			if err != nil {
-				fmt.Printf("Failed to create run config with err: %s\n", err)
-				os.Exit(1)
-			}
-			req, err := runner.NewRequester(runConfig)
-			if err != nil {
-				fmt.Printf("Failed to create requester with err: %s\n", err)
-				os.Exit(1)
-			}
-
-			bfs = append(bfs, BenchmarkFunction{
-				F:        req,
-				Duration: queryOption.Duration,
-				Type:     queryOption.Type,
-			})
-		}
-		return bfs
+		return data
 	}
 
-	// Single input case (original behavior)
-	oqr := commonv1.OnlineQueryBulkRequest{
-		InputsFeather: queryInputs[0], // Use the first (and only) input
-		Outputs:       queryOutputs,
-		Context:       onlineQueryContext,
-	}
-
-	binaryData, err := proto.Marshal(&oqr)
-
-	if err != nil {
-		fmt.Printf("Failed to marshal online query request with outputs: '%v', and context '%v'\n", queryOutputs, onlineQueryContext)
-		os.Exit(1)
-	}
+	// Create BenchmarkFunctions for each query option
 	var bfs []BenchmarkFunction
-	for _, queryOption := range queryOptions {
-		runConfig, err := runner.NewConfig(
-			strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryBulkProcedure, "/"),
-			grpcHost,
-			slices.Concat(
+	for i, queryOption := range queryOptions {
+		// Build runner options
+		var runnerOptions []runner.Option
+
+		if traceSampleRate > 0 {
+			runnerOptions = slices.Concat(
 				globalHeaders,
 				queryOption.Options,
 				[]runner.Option{
-					runner.WithBinaryData(binaryData),
+					runner.WithBinaryDataFunc(binaryDataFunc),
+					runner.WithMetadataProvider(createTraceMetadata),
 				},
-			)...,
-		)
-		if err != nil {
-			fmt.Printf("Failed to create run config with err: %s\n", err)
-			os.Exit(1)
-		}
-		req, err := runner.NewRequester(runConfig)
-		if err != nil {
-			fmt.Printf("Failed to create requester with err: %s\n", err)
-			os.Exit(1)
-		}
-
-		bfs = append(bfs, BenchmarkFunction{
-			F:        req,
-			Duration: queryOption.Duration,
-			Type:     queryOption.Type,
-		})
-	}
-	return bfs
-}
-
-func BenchmarkQueryFromFile(
-	grpcHost string,
-	globalHeaders []runner.Option,
-	file string,
-	outputs []*commonv1.OutputExpr,
-	onlineQueryContext *commonv1.OnlineQueryContext,
-	rps uint,
-	benchmarkDuration time.Duration,
-	rampDuration time.Duration,
-	scheduleFile string,
-	chunkSize int64,
-) []BenchmarkFunction {
-	// total requests calculated from duration and RPS
-	queryOptions := parse.QueryRateOptions(rps, benchmarkDuration, rampDuration, scheduleFile)
-
-	// Pre-populate all batches from the parquet file
-	batches, err := parse.ReadParquetFile(file, chunkSize)
-	if err != nil {
-		fmt.Printf("Failed to read parquet file with err: %s\n", err)
-		os.Exit(1)
-	}
-
-	if len(batches) == 0 {
-		fmt.Printf("No batches found in parquet file: %s\n", file)
-		os.Exit(1)
-	}
-
-	// Drop the last batch if it's smaller than chunkSize (incomplete batch)
-	if chunkSize > 0 && len(batches) > 1 {
-		// Decode the last batch to check its size
-		lastBatch := batches[len(batches)-1]
-		reader, err := ipc.NewFileReader(bytes.NewReader(lastBatch))
-		if err == nil && reader.NumRecords() > 0 {
-			lastRecord, err := reader.Record(0)
-			if err == nil {
-				if lastRecord.NumRows() < chunkSize {
-					batches = batches[:len(batches)-1]
-					fmt.Printf("Dropped last incomplete batch (had %d rows, expected %d)\n", lastRecord.NumRows(), chunkSize)
-				}
-				lastRecord.Release()
-			}
-			reader.Close()
-		}
-	}
-
-	// Pre-marshal all requests to avoid marshaling overhead on each request
-	preMarshaledRequests := make([][]byte, len(batches))
-	for i, batch := range batches {
-		oqr := commonv1.OnlineQueryBulkRequest{
-			InputsFeather: batch,
-			Outputs:       outputs,
-			Context:       onlineQueryContext,
-		}
-		value, err := proto.Marshal(&oqr)
-		if err != nil {
-			fmt.Printf("Failed to marshal online query request with outputs: '%v', and context '%v'\n", outputs, onlineQueryContext)
-			os.Exit(1)
-		}
-		preMarshaledRequests[i] = value
-	}
-
-	// Track which request to use next (cycles through pre-marshaled requests)
-	requestIndex := 0
-	var requestMutex sync.Mutex
-
-	binaryDataFunc := func(mtd *desc.MethodDescriptor, cd *runner.CallData) []byte {
-		requestMutex.Lock()
-		currentRequest := preMarshaledRequests[requestIndex]
-		requestIndex = (requestIndex + 1) % len(preMarshaledRequests)
-		requestMutex.Unlock()
-		return currentRequest
-	}
-	var bfs []BenchmarkFunction
-	for _, queryOption := range queryOptions {
-		runConfig, err := runner.NewConfig(
-			strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryBulkProcedure, "/"),
-			grpcHost,
-			slices.Concat(
+			)
+		} else {
+			runnerOptions = slices.Concat(
 				globalHeaders,
 				queryOption.Options,
 				[]runner.Option{
 					runner.WithBinaryDataFunc(binaryDataFunc),
 				},
-			)...,
+			)
+		}
+
+		runConfig, err := runner.NewConfig(
+			strings.TrimPrefix(enginev1connect.QueryServiceOnlineQueryBulkProcedure, "/"),
+			grpcHost,
+			runnerOptions...,
 		)
 		if err != nil {
 			fmt.Printf("Failed to create run config with err: %s\n", err)
@@ -362,26 +161,34 @@ func BenchmarkQueryFromFile(
 			fmt.Printf("Failed to create requester with err: %s\n", err)
 			os.Exit(1)
 		}
-		bfs = append(bfs, BenchmarkFunction{
+
+		bf := BenchmarkFunction{
 			F:        req,
 			Duration: queryOption.Duration,
 			Type:     queryOption.Type,
-		})
+		}
+
+		// Add cleanup function to first benchmark function
+		if i == 0 {
+			bf.Cleanup = inputSource.Close
+		}
+
+		bfs = append(bfs, bf)
 	}
 	return bfs
 }
+
 
 func BenchmarkUploadFeatures(
 	grpcHost string,
 	globalHeaders []runner.Option,
 	uploadFeaturesFile string,
-	rps uint,
+	rps string,
 	benchmarkDuration time.Duration,
 	rampDuration time.Duration,
-	scheduleFile string,
 ) []BenchmarkFunction {
 	file, err := os.Open(uploadFeaturesFile)
-	queryOptions := parse.QueryRateOptions(rps, benchmarkDuration, rampDuration, scheduleFile)
+	queryOptions := parse.QueryRateOptions(rps, benchmarkDuration, rampDuration)
 	if err != nil {
 		fmt.Printf("Failed to open file with err: %s\n", err)
 		os.Exit(1)
@@ -471,6 +278,16 @@ func RunBenchmarks(bfs []BenchmarkFunction) *runner.Report {
 		}
 		reports = append(reports, result)
 	}
+
+	// Run cleanup functions after all benchmarks complete
+	for _, bf := range bfs {
+		if bf.Cleanup != nil {
+			if err := bf.Cleanup(); err != nil {
+				fmt.Printf("Warning: cleanup error: %s\n", err)
+			}
+		}
+	}
+
 	return mergeReports(reports)
 }
 
