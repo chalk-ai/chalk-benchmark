@@ -20,12 +20,13 @@ type LazyBatchLoader struct {
 	bufferSize int
 
 	// State
-	mu            sync.RWMutex
-	batches       []arrow.Record // Circular buffer of records (fixed size)
-	batchIpcBytes [][]byte       // IPC bytes for each batch (fixed size)
-	bufferStart   int            // Global index of first batch in buffer
-	nextLoadIndex int            // Next global batch index to load
-	totalBatches  int            // Total number of batches (-1 = unknown)
+	mu               sync.RWMutex
+	batches          []arrow.Record // Circular buffer of records (fixed size)
+	batchIpcBytes    [][]byte       // IPC bytes for each batch (fixed size)
+	bufferStart      int            // Global index of first batch in buffer
+	nextLoadIndex    int            // Next global batch index to load
+	totalBatches     int            // Total number of batches (-1 = unknown)
+	lastConsumedIndex int           // Last batch index that was consumed via GetBatch
 
 	// Parquet reader state
 	reader      *pqarrow.FileReader
@@ -71,19 +72,20 @@ func NewLazyBatchLoader(filePath string, chunkSize int64, bufferSize int) (*Lazy
 	}
 
 	loader := &LazyBatchLoader{
-		filePath:      filePath,
-		chunkSize:     chunkSize,
-		bufferSize:    bufferSize,
-		batches:       make([]arrow.Record, bufferSize), // Pre-allocate fixed size
-		batchIpcBytes: make([][]byte, bufferSize),       // Pre-allocate fixed size
-		bufferStart:   0,
-		nextLoadIndex: 0,
-		totalBatches:  -1, // Unknown until we finish first pass
-		reader:        reader,
-		rgReader:      rgReader,
-		parquetFile:   file,
-		stopChan:      make(chan struct{}),
-		errChan:       make(chan error, 10),
+		filePath:          filePath,
+		chunkSize:         chunkSize,
+		bufferSize:        bufferSize,
+		batches:           make([]arrow.Record, bufferSize), // Pre-allocate fixed size
+		batchIpcBytes:     make([][]byte, bufferSize),       // Pre-allocate fixed size
+		bufferStart:       0,
+		nextLoadIndex:     0,
+		totalBatches:      -1, // Unknown until we finish first pass
+		lastConsumedIndex: -1, // No batches consumed yet
+		reader:            reader,
+		rgReader:          rgReader,
+		parquetFile:       file,
+		stopChan:          make(chan struct{}),
+		errChan:           make(chan error, 10),
 	}
 
 	// Pre-load initial batches synchronously
@@ -214,8 +216,16 @@ func (l *LazyBatchLoader) loadNextBatch() error {
 
 	// Update indices
 	l.nextLoadIndex++
-	if l.nextLoadIndex-l.bufferSize > l.bufferStart {
-		l.bufferStart = l.nextLoadIndex - l.bufferSize
+
+	// Only advance bufferStart if we have consumed batches beyond the current window
+	// This prevents evicting unconsumed batches
+	minRequiredStart := l.nextLoadIndex - l.bufferSize
+	if minRequiredStart > l.bufferStart {
+		// Only advance if the oldest batch has been consumed
+		// Allow some slack (half buffer size) to handle non-sequential access patterns
+		if l.lastConsumedIndex >= l.bufferStart + l.bufferSize/2 {
+			l.bufferStart = minRequiredStart
+		}
 	}
 
 	return nil
@@ -224,8 +234,8 @@ func (l *LazyBatchLoader) loadNextBatch() error {
 // GetBatch returns the batch at the specified global index.
 // This should be fast - just array access, no blocking I/O.
 func (l *LazyBatchLoader) GetBatch(globalIndex int) ([]byte, arrow.Record, error) {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
+	l.mu.Lock()
+	defer l.mu.Unlock()
 
 	// If we know total batches, normalize the index
 	actualIndex := globalIndex
@@ -236,6 +246,12 @@ func (l *LazyBatchLoader) GetBatch(globalIndex int) ([]byte, arrow.Record, error
 	// Check if batch is in buffer
 	if actualIndex >= l.bufferStart && actualIndex < l.nextLoadIndex {
 		bufferPos := actualIndex % l.bufferSize
+
+		// Track consumption to prevent premature eviction
+		if actualIndex > l.lastConsumedIndex {
+			l.lastConsumedIndex = actualIndex
+		}
+
 		return l.batchIpcBytes[bufferPos], l.batches[bufferPos], nil
 	}
 
