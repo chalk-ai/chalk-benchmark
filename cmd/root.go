@@ -103,6 +103,17 @@ var rootCmd = &cobra.Command{
 			runner.WithInsecure(insecureQueryHost),
 			runner.WithSkipTLSVerify(skipTLS),
 			runner.WithP99_9(p99_9),
+			runner.WithDataSamplingRate(dataSampleRate),
+		}
+
+		// Add logger if debug mode is enabled
+		if debug {
+			handler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+				Level: slog.LevelDebug,
+			})
+			logger := slog.New(handler)
+			globalHeaders = append(globalHeaders, runner.WithLogger(runner.NewSlogAdapter(logger)))
+			slog.Debug("Debug logging enabled for runner")
 		}
 		slog.Debug(fmt.Sprintf("numConnections: %s, timeout: %s, concurrency: %s, insecure: %b, skipTLSVerify: %b", numConnections, timeout, concurrency, insecureQueryHost, skipTLS))
 
@@ -156,7 +167,7 @@ var rootCmd = &cobra.Command{
 				rps,
 				benchmarkDuration,
 				rampDuration,
-					traceSampleRate,
+				traceSampleRate,
 				authHeaders,
 			)
 		case "query":
@@ -186,7 +197,7 @@ var rootCmd = &cobra.Command{
 				rps,
 				benchmarkDuration,
 				rampDuration,
-					traceSampleRate,
+				traceSampleRate,
 				authHeaders,
 			)
 		}
@@ -293,12 +304,16 @@ var p99 bool
 var p99_9 bool
 var percentileWindow time.Duration
 
-// trace sampling
+// sampling rates
 var traceSampleRate float64
+var dataSampleRate float64
 
 // input source options
 var prematerialize bool
 var lazyLoadBufferSize int
+
+// payload capture
+var capturePayloads bool
 
 func init() {
 	viper.AutomaticEnv()
@@ -365,4 +380,7 @@ func init() {
 
 	// trace sampling
 	flags.Float64Var(&traceSampleRate, "trace-sample-rate", 0.0, "Sample rate for trace collection (0.0-1.0). When set, each request will randomly enable tracing based on this probability.")
+
+	// payload capture
+	flags.Float64Var(&dataSampleRate, "data-sample-rate", 0.0, "Sample request and response payloads for display in HTML report.")
 }
