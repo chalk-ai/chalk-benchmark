@@ -1,0 +1,43 @@
+# Binaries
+chalk-benchmark*
+*.exe
+
+# Git
+.git
+.gitignore
+
+# Python
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test/Build artifacts
+*.test
+*.out
+coverage.txt
+*.log
+
+# Documentation
+README.md
+*.md
+!go.mod
+!go.sum
+
+# Misc
+.env
+.env.*

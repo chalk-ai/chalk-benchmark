@@ -14,7 +14,7 @@ RUN --mount=type=cache,target=/gomod-cache \
     --mount=type=cache,target=/go-cache \
     CGO_ENABLED=0 GOOS=linux \
     go build \
-    -ldflags="-X 'github.com/chalk-ai/chalk-private/chalk-benchmark/info.Sha=$COMMIT_SHA'"
+    -ldflags="-s -w -X 'github.com/chalk-ai/chalk-private/chalk-benchmark/info.Sha=$COMMIT_SHA'"
 
 # Run stage
 FROM --platform=linux/amd64 alpine
@@ -22,7 +22,7 @@ FROM --platform=linux/amd64 alpine
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 # Copy the built binary from the builder stage
-COPY --from=builder /app/chalk-benchmark /usr/local/bin/chalk-benchmark
+COPY --from=builder /app/chalk-benchmark/chalk-benchmark /usr/local/bin/chalk-benchmark
 
 # Set the working directory
 WORKDIR /app
