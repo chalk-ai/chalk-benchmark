@@ -141,17 +141,18 @@ func (l *LazyBatchLoader) loadInitialBatches() error {
 
 	fmt.Printf("Loaded initial %d batches into circular buffer\n", batchesLoaded)
 
-	// Continue reading to discover totalBatches (without storing)
-	fmt.Println("Discovering total batch count...")
-	totalCount := batchesLoaded
-	for l.rgReader.Next() {
-		totalCount++
-		// Don't retain - just count
+	// Calculate totalBatches from parquet metadata (fast!)
+	fmt.Println("Calculating total batch count from metadata...")
+	metadata := l.parquetFile.MetaData()
+	totalRows := metadata.NumRows
+	batchSize := l.chunkSize
+	if batchSize <= 0 {
+		batchSize = 1 << 30 // 1 billion rows
 	}
 
-	// Now we know the total
-	l.totalBatches = totalCount
-	fmt.Printf("Discovered %d total batches in parquet file\n", l.totalBatches)
+	// Calculate number of batches (ceiling division)
+	l.totalBatches = int((totalRows + batchSize - 1) / batchSize)
+	fmt.Printf("Calculated %d total batches (%d rows, batch size %d)\n", l.totalBatches, totalRows, batchSize)
 
 	// Reset reader for background loading to continue from where buffer left off
 	l.rgReader.Release()
@@ -161,8 +162,8 @@ func (l *LazyBatchLoader) loadInitialBatches() error {
 	}
 	l.rgReader = rgReader
 
-	// Skip to where we left off (bufferSize batches)
-	for i := 0; i < l.bufferSize; i++ {
+	// Skip to where we left off (the batches already loaded into buffer)
+	for i := 0; i < batchesLoaded; i++ {
 		if !l.rgReader.Next() {
 			return fmt.Errorf("failed to skip to buffer position %d", i)
 		}
