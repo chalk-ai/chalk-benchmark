@@ -194,10 +194,9 @@ func (l *LazyBatchLoader) backgroundLoader() {
 				}
 			}
 
-			// Check if we're idle (buffer full or caught up)
+			// Check if we're idle (buffer full)
 			l.mu.Lock()
-			isIdle := (l.totalBatches > 0 && l.nextLoadIndex >= l.totalBatches+l.bufferSize) ||
-				(l.nextLoadIndex-l.bufferStart >= l.bufferSize)
+			isIdle := (l.nextLoadIndex-l.bufferStart >= l.bufferSize)
 			l.mu.Unlock()
 
 			if isIdle {
@@ -222,10 +221,19 @@ func (l *LazyBatchLoader) loadNextBatch() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	// If we know total batches and we're caught up, we're done
-	if l.totalBatches > 0 && l.nextLoadIndex >= l.totalBatches+l.bufferSize {
-		// We've loaded a full cycle, just idle
-		return nil
+	// Advance bufferStart if needed to make room for the next batch
+	// Only advance if batches have been consumed to prevent evicting unconsumed batches
+	if l.nextLoadIndex >= l.bufferSize {
+		minRequiredStart := l.nextLoadIndex - l.bufferSize + 1
+		if minRequiredStart > l.bufferStart {
+			// Only advance bufferStart if batches have been consumed up to the new start position
+			if l.lastConsumedIndex >= minRequiredStart-1 {
+				l.bufferStart = minRequiredStart
+			} else {
+				// Buffer is full with unconsumed batches, wait for consumption
+				return nil
+			}
+		}
 	}
 
 	// Don't load if the buffer is full and we can't advance bufferStart yet
@@ -282,17 +290,6 @@ func (l *LazyBatchLoader) loadNextBatch() error {
 	// Update indices
 	l.nextLoadIndex++
 
-	// Only advance bufferStart if we have consumed batches beyond the current window
-	// This prevents evicting unconsumed batches
-	minRequiredStart := l.nextLoadIndex - l.bufferSize
-	if minRequiredStart > l.bufferStart {
-		// Only advance if we've consumed at least up to the new buffer start position
-		// This ensures we don't evict batches that haven't been requested yet
-		if l.lastConsumedIndex >= minRequiredStart - 1 {
-			l.bufferStart = minRequiredStart
-		}
-	}
-
 	return nil
 }
 
@@ -302,25 +299,30 @@ func (l *LazyBatchLoader) GetBatch(globalIndex int) ([]byte, arrow.Record, error
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	// If we know total batches, normalize the index
-	actualIndex := globalIndex
-	if l.totalBatches > 0 {
-		actualIndex = globalIndex % l.totalBatches
-	}
+	// Check if the requested global index is in the buffer range
+	// Note: bufferStart and nextLoadIndex are global indices that can exceed totalBatches
+	if globalIndex >= l.bufferStart && globalIndex < l.nextLoadIndex {
+		// Normalize to actual batch index for buffer access
+		actualIndex := globalIndex
+		if l.totalBatches > 0 {
+			actualIndex = globalIndex % l.totalBatches
+		}
 
-	// Check if batch is in buffer
-	if actualIndex >= l.bufferStart && actualIndex < l.nextLoadIndex {
 		bufferPos := actualIndex % l.bufferSize
 
 		// Track consumption to prevent premature eviction
-		if actualIndex > l.lastConsumedIndex {
-			l.lastConsumedIndex = actualIndex
+		if globalIndex > l.lastConsumedIndex {
+			l.lastConsumedIndex = globalIndex
 		}
 
 		return l.batchIpcBytes[bufferPos], l.batches[bufferPos], nil
 	}
 
 	// Batch not in buffer - this shouldn't happen if background loader is keeping up
+	actualIndex := globalIndex
+	if l.totalBatches > 0 {
+		actualIndex = globalIndex % l.totalBatches
+	}
 	return nil, nil, fmt.Errorf("batch %d (actual: %d) not in buffer [%d, %d)",
 		globalIndex, actualIndex, l.bufferStart, l.nextLoadIndex)
 }

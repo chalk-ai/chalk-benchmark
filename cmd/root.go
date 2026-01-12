@@ -139,18 +139,18 @@ var rootCmd = &cobra.Command{
 			// Create parquet input source (lazy or pre-materialized)
 			var inputSource parse.InputSource
 			var err error
-			if prematerialize {
-				inputSource, err = parse.NewPreMaterializedParquetInputSource(
-					inputFile,
-					chunkSize,
-					queryOutputs,
-					onlineQueryContext,
-				)
-			} else {
+			if lazy {
 				inputSource, err = parse.NewLazyParquetInputSource(
 					inputFile,
 					chunkSize,
 					lazyLoadBufferSize,
+					queryOutputs,
+					onlineQueryContext,
+				)
+			} else {
+				inputSource, err = parse.NewPreMaterializedParquetInputSource(
+					inputFile,
+					chunkSize,
 					queryOutputs,
 					onlineQueryContext,
 				)
@@ -309,7 +309,7 @@ var traceSampleRate float64
 var dataSampleRate float64
 
 // input source options
-var prematerialize bool
+var lazy bool
 var lazyLoadBufferSize int
 
 // payload capture
@@ -347,7 +347,7 @@ func init() {
 	flags.StringArrayVar(&inputRaw, "in", nil, "input features to the online query, for instance: 'user.id=xwdw' or 'user.name=John'. This flag will try to convert inputs to the right type. Supports array notation like 'user.id=[1,2,3,4]' for multiple values. Can be specified multiple times. If you need to explicitly pass in a number or string, use the `in-num` or `in-str` flag.")
 	flags.StringVar(&inputFile, "in_file", "", "input features to the online query through a parquet file—columns should be valid feature names")
 	flags.BoolVar(&randomSampling, "random_sampling", false, "when enabled, randomly samples from the pre-encoded input list instead of cycling through sequentially")
-	flags.BoolVar(&prematerialize, "prematerialize", false, "when enabled with parquet input, loads all batches into memory at startup for minimal latency (default: lazy loading with circular buffer)")
+	flags.BoolVar(&lazy, "lazy", false, "when enabled with parquet input, uses lazy loading with a circular buffer instead of loading all batches into memory (default: pre-materialize all batches)")
 	flags.IntVar(&lazyLoadBufferSize, "lazy_load_buffer_size", 1000, "number of batches to keep in memory when using lazy loading for parquet files (higher = more memory, more headroom for high RPS)")
 	flags.StringToStringVar(&inputStr, "in_str", nil, "string input features to the online query, for instance: 'user.id=xwdw,user.name'John'. Supports array notation like 'user.id=[a,b,c,d]' for multiple values.")
 	flags.StringToInt64Var(&inputNum, "in_num", nil, "numeric input features to the online query, for instance 'user.id=1,user.age=28'. Note that array notation is supported in the --in flag for numeric arrays.")
