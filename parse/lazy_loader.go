@@ -101,9 +101,26 @@ func NewLazyBatchLoader(filePath string, chunkSize int64, bufferSize int) (*Lazy
 }
 
 // loadInitialBatches loads the first buffer of batches synchronously
+// and discovers the total number of batches
 func (l *LazyBatchLoader) loadInitialBatches() error {
+	fmt.Println("Starting warmup phase...")
 	batchesLoaded := 0
-	for batchesLoaded < l.bufferSize && l.rgReader.Next() {
+
+	// First, load up to bufferSize batches into the buffer
+	for batchesLoaded < l.bufferSize {
+		if !l.rgReader.Next() {
+			// Hit EOF before filling buffer - we have everything
+			l.totalBatches = batchesLoaded
+			fmt.Printf("Loaded all %d batches from parquet file (fits in buffer)\n", l.totalBatches)
+
+			if batchesLoaded == 0 {
+				return fmt.Errorf("no batches found in parquet file")
+			}
+
+			fmt.Println("warmup completed")
+			return nil
+		}
+
 		record := l.rgReader.Record()
 		record.Retain()
 
@@ -122,38 +139,78 @@ func (l *LazyBatchLoader) loadInitialBatches() error {
 		l.nextLoadIndex++
 	}
 
-	// Check if we've loaded everything
-	if !l.rgReader.Next() {
-		l.totalBatches = batchesLoaded
-		fmt.Printf("Loaded all %d batches from parquet file (fits in buffer)\n", l.totalBatches)
-	} else {
-		fmt.Printf("Loaded initial %d batches into circular buffer\n", batchesLoaded)
+	fmt.Printf("Loaded initial %d batches into circular buffer\n", batchesLoaded)
+
+	// Continue reading to discover totalBatches (without storing)
+	fmt.Println("Discovering total batch count...")
+	totalCount := batchesLoaded
+	for l.rgReader.Next() {
+		totalCount++
+		// Don't retain - just count
 	}
 
-	if batchesLoaded == 0 {
-		return fmt.Errorf("no batches found in parquet file")
+	// Now we know the total
+	l.totalBatches = totalCount
+	fmt.Printf("Discovered %d total batches in parquet file\n", l.totalBatches)
+
+	// Reset reader for background loading to continue from where buffer left off
+	l.rgReader.Release()
+	rgReader, err := l.reader.GetRecordReader(context.Background(), nil, nil)
+	if err != nil {
+		return fmt.Errorf("failed to reset record reader: %w", err)
+	}
+	l.rgReader = rgReader
+
+	// Skip to where we left off (bufferSize batches)
+	for i := 0; i < l.bufferSize; i++ {
+		if !l.rgReader.Next() {
+			return fmt.Errorf("failed to skip to buffer position %d", i)
+		}
 	}
 
+	fmt.Println("warmup completed")
 	return nil
 }
 
 // backgroundLoader continuously loads batches ahead of the current position
+// Runs as fast as possible to keep buffer full, yielding only when buffer is full
 func (l *LazyBatchLoader) backgroundLoader() {
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
+	consecutiveIdle := 0
 
 	for {
 		select {
 		case <-l.stopChan:
 			return
-		case <-ticker.C:
-			// Try to keep the buffer full
-			if err := l.loadNextBatch(); err != nil {
+		default:
+			// Try to load next batch
+			err := l.loadNextBatch()
+
+			if err != nil {
 				select {
 				case l.errChan <- err:
 				default:
 					// Error channel full, drop error
 				}
+			}
+
+			// Check if we're idle (buffer full or caught up)
+			l.mu.Lock()
+			isIdle := (l.totalBatches > 0 && l.nextLoadIndex >= l.totalBatches+l.bufferSize) ||
+				(l.nextLoadIndex-l.bufferStart >= l.bufferSize)
+			l.mu.Unlock()
+
+			if isIdle {
+				consecutiveIdle++
+				// Back off exponentially when idle, up to 10ms
+				if consecutiveIdle > 10 {
+					time.Sleep(10 * time.Millisecond)
+				} else {
+					time.Sleep(time.Duration(consecutiveIdle) * time.Millisecond)
+				}
+			} else {
+				consecutiveIdle = 0
+				// Yield briefly to let GetBatch() calls through
+				time.Sleep(10 * time.Microsecond)
 			}
 		}
 	}
@@ -167,6 +224,13 @@ func (l *LazyBatchLoader) loadNextBatch() error {
 	// If we know total batches and we're caught up, we're done
 	if l.totalBatches > 0 && l.nextLoadIndex >= l.totalBatches+l.bufferSize {
 		// We've loaded a full cycle, just idle
+		return nil
+	}
+
+	// Don't load if the buffer is full and we can't advance bufferStart yet
+	// This prevents overwriting unconsumed batches
+	if l.nextLoadIndex-l.bufferStart >= l.bufferSize {
+		// Buffer is full, wait for consumption to catch up
 		return nil
 	}
 
@@ -221,9 +285,9 @@ func (l *LazyBatchLoader) loadNextBatch() error {
 	// This prevents evicting unconsumed batches
 	minRequiredStart := l.nextLoadIndex - l.bufferSize
 	if minRequiredStart > l.bufferStart {
-		// Only advance if the oldest batch has been consumed
-		// Allow some slack (half buffer size) to handle non-sequential access patterns
-		if l.lastConsumedIndex >= l.bufferStart + l.bufferSize/2 {
+		// Only advance if we've consumed at least up to the new buffer start position
+		// This ensures we don't evict batches that haven't been requested yet
+		if l.lastConsumedIndex >= minRequiredStart - 1 {
 			l.bufferStart = minRequiredStart
 		}
 	}
