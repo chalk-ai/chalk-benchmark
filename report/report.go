@@ -74,4 +74,23 @@ func SaveReport(outputFilename string, result *runner.Report, includeRequestMeta
 		os.Exit(1)
 	}
 	fmt.Printf("Wrote report file to %s\n", reportFile)
+
+	// Write parquet file with latency data when saving HTML report
+	if reportType == ReportTypeHTML {
+		parquetFile := filepath.Join(
+			CurDir(),
+			fmt.Sprintf("%s.parquet", filenameNoPrefix),
+		)
+
+		parquetSaver := printer.ReportPrinter{
+			Report: result,
+		}
+
+		err = parquetSaver.WriteParquetFile(parquetFile)
+		if err != nil {
+			fmt.Printf("Failed to save parquet file with error: %s\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Wrote parquet file to %s\n", parquetFile)
+	}
 }

@@ -7,7 +7,7 @@ toolchain go1.24.10
 require (
 	github.com/apache/arrow/go/v17 v17.0.0
 	github.com/chalk-ai/chalk-go v0.17.1
-	github.com/chalk-ai/ghz v0.1.26
+	github.com/chalk-ai/ghz v0.1.27
 	github.com/goccy/go-json v0.10.3
 	github.com/google/uuid v1.6.0
 	github.com/jhump/protoreflect v1.17.0
