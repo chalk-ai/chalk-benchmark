@@ -22,7 +22,8 @@ FROM --platform=linux/amd64 alpine
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 # Copy the built binary from the builder stage
-COPY --from=builder /app/chalk-benchmark/chalk-benchmark /usr/local/bin/chalk-benchmark
+RUN mkdir -p /usr/local/bin/chalk-benchmark/
+COPY --from=builder /app/chalk-benchmark/chalk-benchmark /usr/local/bin/chalk-benchmark/chalk-benchmark
 
 # Set the working directory
 WORKDIR /app
