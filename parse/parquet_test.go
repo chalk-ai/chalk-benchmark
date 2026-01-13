@@ -142,3 +142,34 @@ func TestIterateParquetFileChunking(t *testing.T) {
 		t.Errorf("expected %d chunks, got %d", expectedChunks, chunkCount)
 	}
 }
+
+// BenchmarkQueuedLazyParquetInputSource measures the throughput of Next() calls
+// to verify it can sustain 10k+ QPS
+func BenchmarkQueuedLazyParquetInputSource(b *testing.B) {
+	source, err := NewQueuedLazyParquetInputSource(
+		"../testdata/test.parquet",
+		1,        // chunk size
+		100,      // buffer size
+		15000,    // queue size
+		nil,      // outputs
+		nil,      // context
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer source.Close()
+
+	// Give producer time to fill queue
+	// time.Sleep(100 * time.Millisecond)
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, err := source.Next()
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "ops/sec")
+}

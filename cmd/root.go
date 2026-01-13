@@ -140,10 +140,11 @@ var rootCmd = &cobra.Command{
 			var inputSource parse.InputSource
 			var err error
 			if lazy {
-				inputSource, err = parse.NewLazyParquetInputSource(
+				inputSource, err = parse.NewQueuedLazyParquetInputSource(
 					inputFile,
 					chunkSize,
 					lazyLoadBufferSize,
+					lazyLoadQueueSize,
 					queryOutputs,
 					onlineQueryContext,
 				)
@@ -311,6 +312,7 @@ var dataSampleRate float64
 // input source options
 var lazy bool
 var lazyLoadBufferSize int
+var lazyLoadQueueSize int
 
 // payload capture
 var capturePayloads bool
@@ -349,6 +351,7 @@ func init() {
 	flags.BoolVar(&randomSampling, "random_sampling", false, "when enabled, randomly samples from the pre-encoded input list instead of cycling through sequentially")
 	flags.BoolVar(&lazy, "lazy", false, "when enabled with parquet input, uses lazy loading with a circular buffer instead of loading all batches into memory (default: pre-materialize all batches)")
 	flags.IntVar(&lazyLoadBufferSize, "lazy_load_buffer_size", 1000, "number of batches to keep in memory when using lazy loading for parquet files (higher = more memory, more headroom for high RPS)")
+	flags.IntVar(&lazyLoadQueueSize, "lazy_load_queue_size", 15000, "number of pre-marshaled requests to buffer in the queue for lazy loading (default: 15000 = ~1.5s buffer at 10k QPS)")
 	flags.StringToStringVar(&inputStr, "in_str", nil, "string input features to the online query, for instance: 'user.id=xwdw,user.name'John'. Supports array notation like 'user.id=[a,b,c,d]' for multiple values.")
 	flags.StringToInt64Var(&inputNum, "in_num", nil, "numeric input features to the online query, for instance 'user.id=1,user.age=28'. Note that array notation is supported in the --in flag for numeric arrays.")
 	flags.StringArrayVar(&output, "out", nil, "target output features for the online query, for instance: 'user.is_fraud'.")

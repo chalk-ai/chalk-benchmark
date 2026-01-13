@@ -185,3 +185,132 @@ func (s *PreMaterializedParquetInputSource) Next() ([]byte, error) {
 func (s *PreMaterializedParquetInputSource) Close() error {
 	return nil
 }
+
+// QueuedLazyParquetInputSource uses a buffered channel as a queue,
+// with a background producer goroutine that keeps it filled with pre-marshaled requests.
+// This gives the memory efficiency of lazy loading with near-zero latency on Next() calls.
+type QueuedLazyParquetInputSource struct {
+	loader             *LazyBatchLoader
+	outputs            []*commonv1.OutputExpr
+	onlineQueryContext *commonv1.OnlineQueryContext
+
+	// Queue of pre-marshaled requests
+	queue chan []byte
+
+	// Control channels
+	stopChan chan struct{}
+	errChan  chan error
+	wg       sync.WaitGroup
+}
+
+// NewQueuedLazyParquetInputSource creates a new queued lazy-loading parquet input source.
+// queueSize controls how many pre-marshaled requests to buffer (recommended: 10000-20000 for 10k+ QPS).
+// bufferSize controls how many parquet batches the loader keeps in memory.
+func NewQueuedLazyParquetInputSource(
+	filePath string,
+	chunkSize int64,
+	bufferSize int,
+	queueSize int,
+	outputs []*commonv1.OutputExpr,
+	onlineQueryContext *commonv1.OnlineQueryContext,
+) (*QueuedLazyParquetInputSource, error) {
+	loader, err := NewLazyBatchLoader(filePath, chunkSize, bufferSize)
+	if err != nil {
+		return nil, err
+	}
+
+	if queueSize <= 0 {
+		queueSize = 15000 // Default: buffer ~1.5s at 10k QPS
+	}
+
+	source := &QueuedLazyParquetInputSource{
+		loader:             loader,
+		outputs:            outputs,
+		onlineQueryContext: onlineQueryContext,
+		queue:              make(chan []byte, queueSize),
+		stopChan:           make(chan struct{}),
+		errChan:            make(chan error, 10),
+	}
+
+	// Start producer goroutine
+	source.wg.Add(1)
+	go source.producer()
+
+	return source, nil
+}
+
+// producer continuously loads batches, marshals them, and feeds the queue.
+// Runs in a background goroutine to keep the queue full.
+func (s *QueuedLazyParquetInputSource) producer() {
+	defer s.wg.Done()
+
+	batchIndex := 0
+	totalBatches := s.loader.GetBatchCount()
+
+	for {
+		select {
+		case <-s.stopChan:
+			return
+		default:
+			// Get batch from loader (fast - just array access)
+			ipcBytes, _, err := s.loader.GetBatch(batchIndex)
+			if err != nil {
+				// Batch not ready yet or error - back off briefly
+				select {
+				case s.errChan <- fmt.Errorf("producer failed to get batch %d: %w", batchIndex, err):
+				default:
+				}
+				continue
+			}
+
+			// Marshal the request (this is the expensive part we're doing off the hot path)
+			oqr := commonv1.OnlineQueryBulkRequest{
+				InputsFeather: ipcBytes,
+				Outputs:       s.outputs,
+				Context:       s.onlineQueryContext,
+			}
+
+			marshaledBytes, err := proto.Marshal(&oqr)
+			if err != nil {
+				select {
+				case s.errChan <- fmt.Errorf("producer failed to marshal request: %w", err):
+				default:
+				}
+				continue
+			}
+
+			// Send to queue (blocks if queue is full - this is the backpressure mechanism)
+			select {
+			case s.queue <- marshaledBytes:
+				// Successfully queued, advance to next batch
+				batchIndex++
+				if totalBatches > 0 && batchIndex >= totalBatches {
+					// Wrap around to beginning for infinite cycling
+					batchIndex = 0
+				}
+			case <-s.stopChan:
+				return
+			}
+		}
+	}
+}
+
+// Next returns the next marshalled OnlineQueryBulk request.
+// This is extremely fast - just a channel receive, no marshaling or computation.
+// Thread-safe and lock-free.
+func (s *QueuedLazyParquetInputSource) Next() ([]byte, error) {
+	select {
+	case msg := <-s.queue:
+		return msg, nil
+	case <-s.stopChan:
+		return nil, fmt.Errorf("input source closed")
+	}
+}
+
+// Close releases all resources
+func (s *QueuedLazyParquetInputSource) Close() error {
+	close(s.stopChan)
+	s.wg.Wait()
+	close(s.queue)
+	return s.loader.Close()
+}
