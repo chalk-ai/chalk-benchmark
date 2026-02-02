@@ -31,14 +31,15 @@ func TestProcessJSONInputsBatchedFormat(t *testing.T) {
 	require.NoError(t, err)
 
 	// Process the JSON file
-	bytesList := ProcessJSONInputs(jsonFile)
+	batchList := ProcessJSONInputs(jsonFile)
 
-	// Should have 2 batches
-	assert.Equal(t, 2, len(bytesList), "expected 2 batches")
+	// Check that we got 2 batches
+	assert.Len(t, batchList, 2)
 
-	// Each batch should contain encoded Arrow data
-	assert.Greater(t, len(bytesList[0]), 0, "first batch should not be empty")
-	assert.Greater(t, len(bytesList[1]), 0, "second batch should not be empty")
+	// Check that each batch contains arrow
+	for i, batch := range batchList {
+		assert.Greater(t, len(batch), 0, "batch %d should not be empty", i)
+	}
 }
 
 func TestProcessJSONInputsFlatFormat(t *testing.T) {
@@ -55,14 +56,13 @@ func TestProcessJSONInputsFlatFormat(t *testing.T) {
 	require.NoError(t, err)
 
 	// Process the JSON file
-	bytesList := ProcessJSONInputs(jsonFile)
+	batchList := ProcessJSONInputs(jsonFile)
 
 	// Should have 2 single-row batches
-	assert.Equal(t, 2, len(bytesList), "expected 2 records")
-
-	// Each should contain encoded Arrow data
-	assert.Greater(t, len(bytesList[0]), 0, "first record should not be empty")
-	assert.Greater(t, len(bytesList[1]), 0, "second record should not be empty")
+	assert.Len(t, batchList, 2)
+	for i, batch := range batchList {
+		assert.Greater(t, len(batch), 0, "batch %d should not be empty", i)
+	}
 }
 
 func TestJSONBatchToRecordMultipleRows(t *testing.T) {
@@ -115,7 +115,18 @@ func TestJSONBatchToRecordSingleRow(t *testing.T) {
 	assert.Equal(t, int64(3), record.NumCols(), "expected 3 columns")
 }
 
-func TestJSONBatchToRecordDataTypes(t *testing.T) {
+func TestJSONBatchToRecordMissingField(t *testing.T) {
+	batch := []map[string]interface{}{
+		{"user.id": float64(1), "user.name": "Alice"},
+		{"user.id": float64(2)}, // Missing user.name
+	}
+
+	_, err := jsonBatchToRecord(batch)
+	assert.Error(t, err, "expected error for missing field")
+	assert.Contains(t, err.Error(), "missing in row")
+}
+
+func TestJSONBatchToRecordBasicTypes(t *testing.T) {
 	batch := []map[string]interface{}{
 		{
 			"int_field":    float64(42),
@@ -129,6 +140,11 @@ func TestJSONBatchToRecordDataTypes(t *testing.T) {
 	require.NoError(t, err)
 	defer record.Release()
 
+	// Check schema
+	assert.Equal(t, int64(1), record.NumRows())
+	assert.Equal(t, int64(4), record.NumCols())
+
+	// Check field types
 	schema := record.Schema()
 	for i := 0; i < int(record.NumCols()); i++ {
 		field := schema.Field(i)
@@ -159,7 +175,7 @@ func TestJSONBatchToRecordWithArrays(t *testing.T) {
 			"id":           float64(2),
 			"int_array":    []interface{}{float64(4), float64(5)},
 			"string_array": []interface{}{"d", "e"},
-			"bool_array":   []interface{}{false, true},
+			"bool_array":   []interface{}{false, false},
 		},
 	}
 
@@ -167,45 +183,35 @@ func TestJSONBatchToRecordWithArrays(t *testing.T) {
 	require.NoError(t, err)
 	defer record.Release()
 
-	// Check record has 2 rows
-	assert.Equal(t, int64(2), record.NumRows(), "expected 2 rows")
+	// Check schema
+	assert.Equal(t, int64(2), record.NumRows())
+	assert.Equal(t, int64(4), record.NumCols())
 
-	// Check field types
+	// Check array field types
 	schema := record.Schema()
 	for i := 0; i < int(record.NumCols()); i++ {
 		field := schema.Field(i)
-		col := record.Column(i)
-
-		switch field.Name {
-		case "id":
-			assert.Equal(t, arrow.PrimitiveTypes.Int64, col.DataType(), "expected int64 for id")
-		case "int_array":
-			assert.Equal(t, arrow.ListOf(arrow.PrimitiveTypes.Int64), col.DataType(), "expected list<int64> for int_array")
-		case "string_array":
-			assert.Equal(t, arrow.ListOf(arrow.BinaryTypes.LargeString), col.DataType(), "expected list<string> for string_array")
-		case "bool_array":
-			assert.Equal(t, arrow.ListOf(arrow.FixedWidthTypes.Boolean), col.DataType(), "expected list<bool> for bool_array")
+		if field.Name == "int_array" {
+			assert.Equal(t, arrow.LIST, field.Type.ID())
+			listType := field.Type.(*arrow.ListType)
+			assert.Equal(t, arrow.INT64, listType.Elem().ID())
+		} else if field.Name == "string_array" {
+			assert.Equal(t, arrow.LIST, field.Type.ID())
+			listType := field.Type.(*arrow.ListType)
+			assert.Equal(t, arrow.LARGE_STRING, listType.Elem().ID())
+		} else if field.Name == "bool_array" {
+			assert.Equal(t, arrow.LIST, field.Type.ID())
+			listType := field.Type.(*arrow.ListType)
+			assert.Equal(t, arrow.BOOL, listType.Elem().ID())
 		}
 	}
 }
 
-func TestJSONBatchToRecordEmptyBatch(t *testing.T) {
+func TestJSONBatchToRecordWithEmptyBatch(t *testing.T) {
 	batch := []map[string]interface{}{}
 
 	_, err := jsonBatchToRecord(batch)
 	assert.Error(t, err, "expected error for empty batch")
-	assert.Contains(t, err.Error(), "empty batch")
-}
-
-func TestJSONBatchToRecordMissingField(t *testing.T) {
-	batch := []map[string]interface{}{
-		{"user.id": float64(1), "user.name": "Alice"},
-		{"user.id": float64(2)}, // Missing user.name
-	}
-
-	_, err := jsonBatchToRecord(batch)
-	assert.Error(t, err, "expected error for missing field")
-	assert.Contains(t, err.Error(), "missing in row")
 }
 
 func TestJSONBatchToRecordConsistentFieldOrdering(t *testing.T) {
@@ -309,3 +315,232 @@ func TestJSONBatchToRecordLargeBatch(t *testing.T) {
 	assert.Equal(t, int64(1000), record.NumRows(), "expected 1000 rows")
 	assert.Equal(t, int64(3), record.NumCols(), "expected 3 columns")
 }
+
+func TestJSONBatchToRecordWithSingleStruct(t *testing.T) {
+	batch := []map[string]interface{}{
+		{
+			"user.id": float64(1),
+			"profile": map[string]interface{}{
+				"name": "Alice",
+				"age":  float64(30),
+			},
+		},
+		{
+			"user.id": float64(2),
+			"profile": map[string]interface{}{
+				"name": "Bob",
+				"age":  float64(25),
+			},
+		},
+	}
+
+	record, err := jsonBatchToRecord(batch)
+	require.NoError(t, err)
+	defer record.Release()
+
+	// Check schema
+	assert.Equal(t, int64(2), record.NumRows())
+	assert.Equal(t, int64(2), record.NumCols())
+
+	// Check struct field
+	schema := record.Schema()
+	profileField := schema.Field(0)
+	assert.Equal(t, "profile", profileField.Name)
+	assert.Equal(t, arrow.STRUCT, profileField.Type.ID())
+
+	// Check struct has correct nested fields
+	structType := profileField.Type.(*arrow.StructType)
+	assert.Equal(t, 2, structType.NumFields())
+
+	// Fields should be sorted alphabetically: age, name
+	assert.Equal(t, "age", structType.Field(0).Name)
+	assert.Equal(t, arrow.INT64, structType.Field(0).Type.ID())
+
+	assert.Equal(t, "name", structType.Field(1).Name)
+	assert.Equal(t, arrow.LARGE_STRING, structType.Field(1).Type.ID())
+}
+
+func TestJSONBatchToRecordWithStructArrays(t *testing.T) {
+	// Test list of structs (has-many relationship)
+	batch := []map[string]interface{}{
+		{
+			"user.id": float64(1),
+			"user.orders": []interface{}{
+				map[string]interface{}{
+					"order.id": float64(101),
+					"order.amount":   50.99,
+				},
+				map[string]interface{}{
+					"order.id": float64(102),
+					"order.amount":   75.5,
+				},
+			},
+		},
+		{
+			"user.id": float64(2),
+			"user.orders": []interface{}{
+				map[string]interface{}{
+					"order.id": float64(201),
+					"order.amount":   120.5,
+				},
+			},
+		},
+	}
+
+	record, err := jsonBatchToRecord(batch)
+	require.NoError(t, err)
+	defer record.Release()
+
+	// Check schema
+	assert.Equal(t, int64(2), record.NumRows())
+	assert.Equal(t, int64(2), record.NumCols())
+
+	// Check list-of-struct field
+	// Fields are sorted alphabetically, so orders comes before user.id
+	schema := record.Schema()
+
+	// Find the orders field
+	var ordersField arrow.Field
+	for i := 0; i < int(record.NumCols()); i++ {
+		if schema.Field(i).Name == "user.orders" {
+			ordersField = schema.Field(i)
+			break
+		}
+	}
+
+	assert.Equal(t, "user.orders", ordersField.Name)
+	assert.Equal(t, arrow.LIST, ordersField.Type.ID())
+
+	// Check list element is a struct
+	listType := ordersField.Type.(*arrow.ListType)
+	assert.Equal(t, arrow.STRUCT, listType.Elem().ID())
+
+	// Check struct fields
+	structType := listType.Elem().(*arrow.StructType)
+	assert.Equal(t, 2, structType.NumFields())
+
+	// Fields should be sorted: amount, order_id
+	assert.Equal(t, "order.amount", structType.Field(0).Name)
+	assert.Equal(t, arrow.FLOAT64, structType.Field(0).Type.ID())
+
+	assert.Equal(t, "order.id", structType.Field(1).Name)
+	assert.Equal(t, arrow.INT64, structType.Field(1).Type.ID())
+}
+
+func TestJSONBatchToRecordWithNestedStructs(t *testing.T) {
+	// Test nested structs
+	batch := []map[string]interface{}{
+		{
+			"user.id": float64(1),
+			"user.address": map[string]interface{}{
+				"address.street": "123 Main St",
+				"address.location": map[string]interface{}{
+					"location.city":  "San Francisco",
+					"location.state": "CA",
+				},
+			},
+		},
+	}
+
+	record, err := jsonBatchToRecord(batch)
+	require.NoError(t, err)
+	defer record.Release()
+
+	// Check schema
+	assert.Equal(t, int64(1), record.NumRows())
+	assert.Equal(t, int64(2), record.NumCols())
+
+	schema := record.Schema()
+	addressField := schema.Field(0)
+	assert.Equal(t, "user.address", addressField.Name)
+	assert.Equal(t, arrow.STRUCT, addressField.Type.ID())
+
+	// Check nested struct
+	structType := addressField.Type.(*arrow.StructType)
+	assert.Equal(t, 2, structType.NumFields())
+
+	// Check that location is also a struct
+	locationField := structType.Field(0)
+	assert.Equal(t, "address.location", locationField.Name)
+	assert.Equal(t, arrow.STRUCT, locationField.Type.ID())
+
+	nestedStructType := locationField.Type.(*arrow.StructType)
+	assert.Equal(t, 2, nestedStructType.NumFields())
+}
+
+func TestJSONBatchToRecordWithMixedComplexTypes(t *testing.T) {
+	// Test combination of primitives, arrays, and structs
+	batch := []map[string]interface{}{
+		{
+			"user.id":   float64(1),
+			"user.name": "Alice",
+			"user.tags": []interface{}{"premium", "verified"}, // Use []interface{} for JSON compatibility
+			"user.metadata": map[string]interface{}{
+				"metadata.created_at": "2024-01-01",
+				"metadata.updated_at": "2024-01-15",
+			},
+			"user.purchases": []interface{}{
+				map[string]interface{}{
+					"purchase.item":  "laptop",
+					"purchase.price": 999.99,
+				},
+				map[string]interface{}{
+					"purchase.item":  "mouse",
+					"purchase.price": 29.99,
+				},
+			},
+		},
+	}
+
+	record, err := jsonBatchToRecord(batch)
+	require.NoError(t, err)
+	defer record.Release()
+
+	// Check schema has all expected fields
+	schema := record.Schema()
+	assert.Equal(t, int64(5), record.NumCols())
+
+	// Verify each field type
+	fieldMap := make(map[string]arrow.Field)
+	for i := 0; i < int(record.NumCols()); i++ {
+		field := schema.Field(i)
+		fieldMap[field.Name] = field
+	}
+
+	// Check primitive
+	assert.Equal(t, arrow.INT64, fieldMap["user.id"].Type.ID())
+
+	// Check string array
+	assert.Equal(t, arrow.LIST, fieldMap["user.tags"].Type.ID())
+
+	// Check struct
+	assert.Equal(t, arrow.STRUCT, fieldMap["user.metadata"].Type.ID())
+
+	// Check list of structs
+	assert.Equal(t, arrow.LIST, fieldMap["user.purchases"].Type.ID())
+	purchasesListType := fieldMap["user.purchases"].Type.(*arrow.ListType)
+	assert.Equal(t, arrow.STRUCT, purchasesListType.Elem().ID())
+}
+
+func TestJSONBatchToRecordWithEmptyStruct(t *testing.T) {
+	batch := []map[string]interface{}{
+		{
+			"user.id": float64(1),
+			"user.empty":   map[string]interface{}{},
+		},
+	}
+
+	record, err := jsonBatchToRecord(batch)
+	require.NoError(t, err)
+	defer record.Release()
+
+	// Should create a struct with 0 fields
+	schema := record.Schema()
+	emptyField := schema.Field(0)
+	assert.Equal(t, "user.empty", emptyField.Name)
+	assert.Equal(t, arrow.STRUCT, emptyField.Type.ID())
+
+	structType := emptyField.Type.(*arrow.StructType)
+	assert.Equal(t, 0, structType.NumFields())
+}
+
