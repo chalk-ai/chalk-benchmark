@@ -2,22 +2,25 @@ package cmd
 
 import (
 	"fmt"
+	"math"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/chalk-ai/chalk-benchmark/parse"
 	"github.com/chalk-ai/chalk-benchmark/report"
 	"github.com/chalk-ai/ghz/runner"
 	"github.com/samber/lo"
 	"github.com/spf13/pflag"
-	"math"
-	"os"
-	"strings"
-	"sync"
-	"time"
+
+	"log/slog"
 
 	_ "github.com/goccy/go-json"
 	progress "github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"log/slog"
 )
 
 var version string
@@ -139,7 +142,12 @@ var rootCmd = &cobra.Command{
 			// Create parquet input source (lazy or pre-materialized)
 			var inputSource parse.InputSource
 			var err error
-			if lazy {
+
+			if filepath.Ext(inputFile) == ".json" {
+				jsonBytes := parse.ProcessJSONInputs(inputFile)
+				inputSource, err = parse.NewCLIInputSourceFromBytes(jsonBytes, queryOutputs, onlineQueryContext)
+			} else if lazy {
+				// only supported for json currently
 				inputSource, err = parse.NewQueuedLazyParquetInputSource(
 					inputFile,
 					chunkSize,
@@ -157,7 +165,7 @@ var rootCmd = &cobra.Command{
 				)
 			}
 			if err != nil {
-				fmt.Printf("Failed to create parquet input source: %s\n", err)
+				fmt.Printf("Failed to create file input source: %s\n", err)
 				os.Exit(1)
 			}
 
