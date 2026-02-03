@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sort"
 	"strconv"
 
 	"github.com/apache/arrow/go/v17/arrow"
@@ -183,6 +184,25 @@ func jsonObjectToRecord(inputObj map[string]interface{}) (arrow.Record, error) {
 	return array.NewRecord(arrow.NewSchema(schema, nil), arrays, 1), nil
 }
 
+// inferStructFields infers Arrow struct fields from a map
+func inferStructFields(m map[string]interface{}) []arrow.Field {
+	// Sort keys for deterministic field order
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	fields := make([]arrow.Field, 0, len(m))
+	for _, key := range keys {
+		value := m[key]
+		field, _ := createFieldAndBuilder(key, value)
+		fields = append(fields, field)
+	}
+
+	return fields
+}
+
 // createFieldAndBuilder creates an Arrow field and builder for a given value type
 func createFieldAndBuilder(fieldName string, value interface{}) (arrow.Field, array.Builder) {
 	switch v := value.(type) {
@@ -203,10 +223,18 @@ func createFieldAndBuilder(fieldName string, value interface{}) (arrow.Field, ar
 		field := arrow.Field{Name: fieldName, Type: arrow.FixedWidthTypes.Boolean}
 		builder := array.NewBooleanBuilder(memory.DefaultAllocator)
 		return field, builder
+	case map[string]interface{}:
+		// Single struct
+		structFields := inferStructFields(v)
+		structType := arrow.StructOf(structFields...)
+
+		field := arrow.Field{Name: fieldName, Type: structType}
+		builder := array.NewStructBuilder(memory.DefaultAllocator, structType)
+		return field, builder
 	case []interface{}:
 		// For arrays, determine element type from first element
 		if len(v) > 0 {
-			switch v[0].(type) {
+			switch firstElem := v[0].(type) {
 			case float64:
 				allIntegers := true
 				for _, elem := range v {
@@ -232,6 +260,14 @@ func createFieldAndBuilder(fieldName string, value interface{}) (arrow.Field, ar
 			case bool:
 				field := arrow.Field{Name: fieldName, Type: arrow.ListOf(arrow.FixedWidthTypes.Boolean)}
 				builder := array.NewListBuilder(memory.DefaultAllocator, arrow.FixedWidthTypes.Boolean)
+				return field, builder
+			case map[string]interface{}:
+				// List of structs - infer struct schema from first element
+				structFields := inferStructFields(firstElem)
+				structType := arrow.StructOf(structFields...)
+
+				field := arrow.Field{Name: fieldName, Type: arrow.ListOf(structType)}
+				builder := array.NewListBuilder(memory.DefaultAllocator, structType)
 				return field, builder
 			}
 		}
@@ -269,6 +305,29 @@ func appendValueToBuilder(builder array.Builder, value interface{}) error {
 			return nil
 		}
 		return fmt.Errorf("expected boolean for boolean field")
+	case *array.StructBuilder:
+		if v, ok := value.(map[string]interface{}); ok {
+			b.Append(true)
+
+			// Get the struct type to access field names
+			structType := b.Type().(*arrow.StructType)
+
+			// Append each field of the struct
+			for i := 0; i < b.NumField(); i++ {
+				fieldName := structType.Field(i).Name
+				fieldValue, exists := v[fieldName]
+				if !exists {
+					return fmt.Errorf("missing field '%s' in struct", fieldName)
+				}
+
+				fieldBuilder := b.FieldBuilder(i)
+				if err := appendValueToBuilder(fieldBuilder, fieldValue); err != nil {
+					return fmt.Errorf("error appending field '%s': %w", fieldName, err)
+				}
+			}
+			return nil
+		}
+		return fmt.Errorf("expected map for struct field")
 	case *array.ListBuilder:
 		if v, ok := value.([]interface{}); ok {
 			b.Append(true)
@@ -304,6 +363,13 @@ func appendValueToBuilder(builder array.Builder, value interface{}) error {
 						valueBuilder.Append(boolVal)
 					} else {
 						return fmt.Errorf("expected boolean in boolean array")
+					}
+				}
+			case *array.StructBuilder:
+				// List of structs
+				for _, elem := range v {
+					if err := appendValueToBuilder(valueBuilder, elem); err != nil {
+						return fmt.Errorf("error appending struct in list: %w", err)
 					}
 				}
 			}
