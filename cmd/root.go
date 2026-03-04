@@ -5,6 +5,8 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -99,7 +101,7 @@ var rootCmd = &cobra.Command{
 			runner.WithReflectionMetadata(authHeaders),
 			runner.WithAsync(true),
 			runner.WithConnections(numConnections),
-			runner.WithCPUs(12),
+			runner.WithCPUs(uint(cpus)),
 			runner.WithTimeout(timeout),
 			runner.WithAsync(true),
 			runner.WithConcurrency(concurrency),
@@ -107,6 +109,10 @@ var rootCmd = &cobra.Command{
 			runner.WithSkipTLSVerify(skipTLS),
 			runner.WithP99_9(p99_9),
 			runner.WithDataSamplingRate(dataSampleRate),
+		}
+
+		if maxDetails > 0 {
+			globalHeaders = append(globalHeaders, runner.WithMaxResults(maxDetails))
 		}
 
 		// Add logger if debug mode is enabled
@@ -119,6 +125,26 @@ var rootCmd = &cobra.Command{
 			slog.Debug("Debug logging enabled for runner")
 		}
 		slog.Debug(fmt.Sprintf("numConnections: %s, timeout: %s, concurrency: %s, insecure: %b, skipTLSVerify: %b", numConnections, timeout, concurrency, insecureQueryHost, skipTLS))
+
+		// Warn about reservoir sampling if max-details is set
+		if maxDetails > 0 {
+			var estimatedTotalRequests int64
+			segments, err := parse.ParseLoadSegments(rps)
+			if err == nil && segments != nil {
+				for _, seg := range segments {
+					estimatedTotalRequests += int64(seg.RPS * seg.Duration.Seconds())
+				}
+			} else {
+				rpsVal, err := strconv.ParseInt(rps, 10, 64)
+				if err == nil {
+					estimatedTotalRequests = rpsVal * int64(benchmarkDuration.Seconds())
+				}
+			}
+			if estimatedTotalRequests > int64(maxDetails) {
+				fmt.Printf("Warning: estimated total requests (~%d) exceeds --max-details limit (%d). Reservoir sampling will be used to maintain a representative sample of %d data points.\n",
+					estimatedTotalRequests, maxDetails, maxDetails)
+			}
+		}
 
 		var benchmarkRunner []BenchmarkFunction
 		var result *runner.Report
@@ -214,9 +240,9 @@ var rootCmd = &cobra.Command{
 		result = RunBenchmarks(benchmarkRunner)
 
 		report.PrintReport(result, rampDuration)
-		report.SaveReport(outputFile, result, includeRequestMetadata, report.ReportTypeHTML)
+		report.SaveReport(outputFile, result, includeRequestMetadata, report.ReportTypeHTML, skipParquet)
 		if jsonOutputFile != "" {
-			report.SaveReport(jsonOutputFile, result, includeRequestMetadata, report.ReportTypeJSON)
+			report.SaveReport(jsonOutputFile, result, includeRequestMetadata, report.ReportTypeJSON, skipParquet)
 		}
 	},
 }
@@ -325,6 +351,11 @@ var lazyLoadQueueSize int
 // payload capture
 var capturePayloads bool
 
+// scaling options
+var cpus int
+var maxDetails int
+var skipParquet bool
+
 func init() {
 	viper.AutomaticEnv()
 	flags := rootCmd.Flags()
@@ -394,4 +425,9 @@ func init() {
 
 	// payload capture
 	flags.Float64Var(&dataSampleRate, "data-sample-rate", 0.0, "Sample request and response payloads for display in HTML report.")
+
+	// scaling options
+	flags.IntVar(&cpus, "cpus", runtime.NumCPU(), "Number of CPUs to use (sets GOMAXPROCS). Defaults to all available CPUs.")
+	flags.IntVar(&maxDetails, "max-details", 0, "Maximum number of per-request data points to store in memory. 0 = use ghz default (100M). Recommended for long runs: 1000000. Uses reservoir sampling to maintain a representative sample.")
+	flags.BoolVar(&skipParquet, "skip-parquet", false, "Skip writing the parquet output file. Useful for long-running benchmarks where the parquet file would be too large.")
 }

@@ -46,7 +46,7 @@ func PrintReport(result *runner.Report, rampDuration time.Duration) {
 	}
 }
 
-func SaveReport(outputFilename string, result *runner.Report, includeRequestMetadata bool, reportType ReportType) {
+func SaveReport(outputFilename string, result *runner.Report, includeRequestMetadata bool, reportType ReportType, skipParquet bool) {
 	filenameNoPrefix := strings.TrimSuffix(outputFilename, "."+string(reportType))
 	reportFile := filepath.Join(
 		CurDir(),
@@ -76,7 +76,7 @@ func SaveReport(outputFilename string, result *runner.Report, includeRequestMeta
 	fmt.Printf("Wrote report file to %s\n", reportFile)
 
 	// Write parquet file with latency data when saving HTML report
-	if reportType == ReportTypeHTML {
+	if reportType == ReportTypeHTML && !skipParquet {
 		parquetFile := filepath.Join(
 			CurDir(),
 			fmt.Sprintf("%s.parquet", filenameNoPrefix),
