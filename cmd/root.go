@@ -3,6 +3,8 @@ package cmd
 import (
 	"fmt"
 	"math"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -109,6 +111,8 @@ var rootCmd = &cobra.Command{
 			runner.WithSkipTLSVerify(skipTLS),
 			runner.WithP99_9(p99_9),
 			runner.WithDataSamplingRate(dataSampleRate),
+			runner.WithInitialWindowSize(int32(initialWindowSize)),
+			runner.WithInitialConnWindowSize(int32(initialConnWindowSize)),
 		}
 
 		if maxDetails > 0 {
@@ -356,6 +360,10 @@ var cpus int
 var maxDetails int
 var skipParquet bool
 
+// HTTP/2 flow control
+var initialWindowSize int
+var initialConnWindowSize int
+
 func init() {
 	viper.AutomaticEnv()
 	flags := rootCmd.Flags()
@@ -430,4 +438,6 @@ func init() {
 	flags.IntVar(&cpus, "cpus", runtime.NumCPU(), "Number of CPUs to use (sets GOMAXPROCS). Defaults to all available CPUs.")
 	flags.IntVar(&maxDetails, "max-details", 0, "Maximum number of per-request data points to store in memory. 0 = use ghz default (100M). Recommended for long runs: 1000000. Uses reservoir sampling to maintain a representative sample.")
 	flags.BoolVar(&skipParquet, "skip-parquet", false, "Skip writing the parquet output file. Useful for long-running benchmarks where the parquet file would be too large.")
+	flags.IntVar(&initialWindowSize, "initial-window-size", 4*1024*1024, "HTTP/2 stream-level initial flow control window size in bytes. Default 4MB. Increase if seeing high response_tx_duration at high QPS.")
+	flags.IntVar(&initialConnWindowSize, "initial-conn-window-size", 32*1024*1024, "HTTP/2 connection-level initial flow control window size in bytes. Default 32MB. The default 64KB is insufficient at 100k+ QPS with large responses.")
 }
