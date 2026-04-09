@@ -439,5 +439,5 @@ func init() {
 	flags.IntVar(&maxDetails, "max-details", 0, "Maximum number of per-request data points to store in memory. 0 = use ghz default (100M). Recommended for long runs: 1000000. Uses reservoir sampling to maintain a representative sample.")
 	flags.BoolVar(&skipParquet, "skip-parquet", false, "Skip writing the parquet output file. Useful for long-running benchmarks where the parquet file would be too large.")
 	flags.IntVar(&initialWindowSize, "initial-window-size", 4*1024*1024, "HTTP/2 stream-level initial flow control window size in bytes. Default 4MB. Increase if seeing high response_tx_duration at high QPS.")
-	flags.IntVar(&initialConnWindowSize, "initial-conn-window-size", 32*1024*1024, "HTTP/2 connection-level initial flow control window size in bytes. Default 32MB. The default 64KB is insufficient at 100k+ QPS with large responses.")
+	flags.IntVar(&initialConnWindowSize, "initial-conn-window-size", 32*1024*1024, "HTTP/2 connection-level initial flow control window size in bytes. Default 32MB. Increase if seeing high response_tx_duration at high QPS")
 }
