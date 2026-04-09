@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"math"
-	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"path/filepath"
