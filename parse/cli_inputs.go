@@ -20,55 +20,65 @@ func parseInputsToRecord(rawInputs map[string]string, inputNum map[string]int64,
 	totalNumInputs := len(rawInputs) + len(inputNum) + len(inputStr)
 	schema := make([]arrow.Field, totalNumInputs)
 	arrays := make([]arrow.Array, totalNumInputs)
-	for j := 0; j < int(chunkSize); j++ {
-		i := 0
-		for key, value := range rawInputs {
-			if _, err := strconv.Atoi(value); err == nil {
-				schema[i] = arrow.Field{Name: key, Type: arrow.PrimitiveTypes.Int64}
-				b := array.NewInt64Builder(memory.DefaultAllocator)
-				defer b.Release()
-				_ = b.AppendValueFromString(value) // cannot be nil
-				arrays[i] = b.NewInt64Array()
-			} else if _, err := strconv.ParseBool(value); err == nil {
-				schema[i] = arrow.Field{Name: key, Type: arrow.FixedWidthTypes.Boolean}
-				b := array.NewBooleanBuilder(memory.DefaultAllocator)
-				defer b.Release()
-				_ = b.AppendValueFromString(value) // cannot be nil
-				arrays[i] = b.NewBooleanArray()
-			} else if _, err := strconv.ParseFloat(value, 64); err == nil {
-				schema[i] = arrow.Field{Name: key, Type: arrow.PrimitiveTypes.Float64}
-				b := array.NewFloat64Builder(memory.DefaultAllocator)
-				defer b.Release()
-				_ = b.AppendValueFromString(value) // cannot be nil
-				arrays[i] = b.NewFloat64Array()
-			} else {
-				schema[i] = arrow.Field{Name: key, Type: arrow.BinaryTypes.LargeString}
-				b := array.NewLargeStringBuilder(memory.DefaultAllocator)
-				defer b.Release()
-				b.AppendString(value) // cannot be nil
-				arrays[i] = b.NewLargeStringArray()
-			}
-			i += 1
-		}
-		for key, value := range inputNum {
+	i := 0
+	for key, value := range rawInputs {
+		if _, err := strconv.Atoi(value); err == nil {
 			schema[i] = arrow.Field{Name: key, Type: arrow.PrimitiveTypes.Int64}
 			b := array.NewInt64Builder(memory.DefaultAllocator)
 			defer b.Release()
-			b.Append(value) // cannot be nil
+			for range chunkSize {
+				_ = b.AppendValueFromString(value) // cannot be nil
+			}
 			arrays[i] = b.NewInt64Array()
-			i += 1
-		}
-		for key, value := range inputStr {
+		} else if _, err := strconv.ParseBool(value); err == nil {
+			schema[i] = arrow.Field{Name: key, Type: arrow.FixedWidthTypes.Boolean}
+			b := array.NewBooleanBuilder(memory.DefaultAllocator)
+			defer b.Release()
+			for range chunkSize {
+				_ = b.AppendValueFromString(value) // cannot be nil
+			}
+			arrays[i] = b.NewBooleanArray()
+		} else if _, err := strconv.ParseFloat(value, 64); err == nil {
+			schema[i] = arrow.Field{Name: key, Type: arrow.PrimitiveTypes.Float64}
+			b := array.NewFloat64Builder(memory.DefaultAllocator)
+			defer b.Release()
+			for range chunkSize {
+				_ = b.AppendValueFromString(value) // cannot be nil
+			}
+			arrays[i] = b.NewFloat64Array()
+		} else {
 			schema[i] = arrow.Field{Name: key, Type: arrow.BinaryTypes.LargeString}
 			b := array.NewLargeStringBuilder(memory.DefaultAllocator)
 			defer b.Release()
-			b.Append(value) // cannot be nil
+			for range chunkSize {
+				b.AppendString(value) // cannot be nil
+			}
 			arrays[i] = b.NewLargeStringArray()
-			i += 1
 		}
+		i++
+	}
+	for key, value := range inputNum {
+		schema[i] = arrow.Field{Name: key, Type: arrow.PrimitiveTypes.Int64}
+		b := array.NewInt64Builder(memory.DefaultAllocator)
+		defer b.Release()
+		for range chunkSize {
+			b.Append(value) // cannot be nil
+		}
+		arrays[i] = b.NewInt64Array()
+		i++
+	}
+	for key, value := range inputStr {
+		schema[i] = arrow.Field{Name: key, Type: arrow.BinaryTypes.LargeString}
+		b := array.NewLargeStringBuilder(memory.DefaultAllocator)
+		defer b.Release()
+		for range chunkSize {
+			b.Append(value) // cannot be nil
+		}
+		arrays[i] = b.NewLargeStringArray()
+		i++
 	}
 
-	return array.NewRecord(arrow.NewSchema(schema, nil), arrays, 1)
+	return array.NewRecord(arrow.NewSchema(schema, nil), arrays, chunkSize)
 }
 
 // parsePkeyToRecord creates an arrow record from a single pkey in key=value format
