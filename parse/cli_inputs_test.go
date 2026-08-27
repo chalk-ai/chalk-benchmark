@@ -89,3 +89,24 @@ func TestCliInputsOverride(t *testing.T) {
 		}
 	}
 }
+
+func TestCliInputsBatchSize(t *testing.T) {
+	record := parseInputsToRecord(
+		map[string]string{
+			"id": "user-1",
+		},
+		map[string]int64{
+			"score": 42,
+		},
+		map[string]string{
+			"kind": "test",
+		},
+		3,
+	)
+	defer record.Release()
+
+	assert.Equal(t, int64(3), record.NumRows())
+	for _, column := range record.Columns() {
+		assert.Equal(t, 3, column.Len())
+	}
+}
