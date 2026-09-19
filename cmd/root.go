@@ -83,6 +83,10 @@ var rootCmd = &cobra.Command{
 			fmt.Print("Ramp duration must either be 0 or greater than 1 second\n")
 			os.Exit(1)
 		}
+		if err := parse.SetInputCompression(inputCompression); err != nil {
+			fmt.Printf("%s\n", err)
+			os.Exit(1)
+		}
 		grpcHost, accessToken, targetEnvironment := AuthenticateUser(host, clientId, clientSecret, environment)
 		slog.Debug(fmt.Sprintf("grpcHost: %s, targetEnvironment: %s", grpcHost, targetEnvironment))
 
@@ -310,6 +314,7 @@ var inputRaw []string
 var inputStr map[string]string
 var inputNum map[string]int64
 var inputFile string
+var inputCompression string
 var randomSampling bool
 var pkeys []string
 var output []string
@@ -388,6 +393,7 @@ func init() {
 	flags.StringArrayVar(&inputRaw, "in", nil, "input features to the online query, for instance: 'user.id=xwdw' or 'user.name=John'. This flag will try to convert inputs to the right type. Supports array notation like 'user.id=[1,2,3,4]' for multiple values. Can be specified multiple times. If you need to explicitly pass in a number or string, use the `in-num` or `in-str` flag.")
 	flags.StringVar(&inputFile, "in_file", "", "input features to the online query through a parquet file—columns should be valid feature names")
 	flags.BoolVar(&randomSampling, "random_sampling", false, "when enabled, randomly samples from the pre-encoded input list instead of cycling through sequentially")
+	flags.StringVar(&inputCompression, "input_compression", "uncompressed", "Arrow IPC codec for query inputs: 'uncompressed', 'lz4' or 'zstd'. Chalk's Python gRPC client defaults to lz4, so 'uncompressed' overstates on-the-wire cost relative to that client.")
 	flags.BoolVar(&lazy, "lazy", false, "when enabled with parquet input, uses lazy loading with a circular buffer instead of loading all batches into memory (default: pre-materialize all batches)")
 	flags.IntVar(&lazyLoadBufferSize, "lazy_load_buffer_size", 1000, "number of batches to keep in memory when using lazy loading for parquet files (higher = more memory, more headroom for high RPS)")
 	flags.IntVar(&lazyLoadQueueSize, "lazy_load_queue_size", 15000, "number of pre-marshaled requests to buffer in the queue for lazy loading (default: 15000 = ~1.5s buffer at 10k QPS)")
