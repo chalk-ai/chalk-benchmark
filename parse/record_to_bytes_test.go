@@ -25,7 +25,10 @@ func compressibleBatch(rows int) []map[string]interface{} {
 }
 
 func TestSetInputCompression(t *testing.T) {
-	t.Cleanup(func() { _ = SetInputCompression("uncompressed") })
+	t.Cleanup(func() { _ = SetInputCompression(DefaultInputCompression) })
+
+	assert.Equal(t, "lz4", DefaultInputCompression, "benchmark default should match ChalkGRPCClient")
+	assert.Equal(t, DefaultInputCompression, InputCompression(), "package should start at the default codec")
 
 	for _, tc := range []struct{ in, want string }{
 		{"", "uncompressed"},
@@ -44,7 +47,7 @@ func TestSetInputCompression(t *testing.T) {
 }
 
 func TestRecordToBytesCompressionShrinksPayload(t *testing.T) {
-	t.Cleanup(func() { _ = SetInputCompression("uncompressed") })
+	t.Cleanup(func() { _ = SetInputCompression(DefaultInputCompression) })
 
 	sizes := map[string]int{}
 	for _, codec := range []string{"uncompressed", "lz4", "zstd"} {
@@ -64,7 +67,7 @@ func TestRecordToBytesCompressionShrinksPayload(t *testing.T) {
 }
 
 func TestRecordToBytesCompressedRoundTrips(t *testing.T) {
-	t.Cleanup(func() { _ = SetInputCompression("uncompressed") })
+	t.Cleanup(func() { _ = SetInputCompression(DefaultInputCompression) })
 
 	for _, codec := range []string{"uncompressed", "lz4", "zstd"} {
 		t.Run(codec, func(t *testing.T) {

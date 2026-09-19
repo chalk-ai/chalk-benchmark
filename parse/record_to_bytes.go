@@ -10,11 +10,14 @@ import (
 	"github.com/apache/arrow/go/v17/arrow/ipc"
 )
 
-// inputCompression is the Arrow IPC codec applied to query inputs. Arrow defaults
-// to uncompressed, which does not match the Chalk clients a benchmark is meant to
-// stand in for -- the Python gRPC client compresses inputs with lz4 by default --
-// so a benchmark run with the default here overstates on-the-wire cost.
-var inputCompression = "uncompressed"
+// DefaultInputCompression matches ChalkGRPCClient, whose input_compression
+// defaults to lz4. A benchmark stands in for a client, so it should put the same
+// bytes on the wire unless asked otherwise -- Arrow's own default is no
+// compression, which overstates on-the-wire cost relative to every real caller.
+const DefaultInputCompression = "lz4"
+
+// inputCompression is the Arrow IPC codec applied to query inputs.
+var inputCompression = DefaultInputCompression
 
 // SetInputCompression selects the Arrow IPC codec used for query inputs. Valid
 // values are "uncompressed", "lz4" and "zstd".
